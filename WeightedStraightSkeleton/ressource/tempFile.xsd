@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified"
+  targetNamespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/System"
+  xmlns:sy="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/System">
+  <xs:element name="system">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="sy:applicationWindow"/>
+        <xs:element ref="sy:cityConfiguration"/>
+        <xs:element ref="sy:textures"/>
+        <xs:element ref="sy:importModels"/>
+        <xs:element ref="sy:exportModels" />
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="applicationWindow">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="sy:width"/>
+        <xs:element ref="sy:height"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="width" type="xs:integer">
+    <xs:annotation>
+      <xs:documentation xml:lang="en">
+        Width of the apllication window in pixels.
+      </xs:documentation>
+    </xs:annotation>
+  </xs:element>
+  <xs:element name="height" type="xs:integer">
+    <xs:annotation>
+      <xs:documentation xml:lang="en">
+        Height of the application window in pixels.
+      </xs:documentation>
+    </xs:annotation>
+  </xs:element>
+  <xs:element name="cityConfiguration">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="sy:configFolder"/>
+        <xs:element ref="sy:configFile"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="configFolder" type="xs:string">
+    <xs:annotation>
+      <xs:documentation xml:lang="en">
+        Path to the folder which contains the XML-configuration of the city, the system has to build.
+      </xs:documentation>
+    </xs:annotation>
+  </xs:element>
+  <xs:element name="configFile" type="xs:NCName">
+    <xs:annotation>
+      <xs:documentation xml:lang="en">
+        Filename of the XML-Configuration within the configuration path.
+      </xs:documentation>
+    </xs:annotation>
+  </xs:element>
+  <xs:element name="textures">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="sy:supportedTextureCategories"/>
+        <xs:element ref="sy:maxTextureSize"/>
+        <xs:element ref="sy:maxTextureScaleFactor"/>
+        <xs:element ref="sy:texturePath"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="supportedTextureCategories" type="xs:string">
+    <xs:annotation>
+      <xs:documentation xml:lang="en">
+        Commaseparated list of texture-categories, which are currently support by the system. To add textures to one of the listed categories, their filenames have to start with one of the listed category-names.
+      </xs:documentation>
+    </xs:annotation>
+  </xs:element>
+  <xs:element name="maxTextureSize" type="xs:integer"/>
+  <xs:annotation>
+    <xs:documentation xml:lang="en">
+      Maximum resolution in pixels a texture is allowed to have within the system.
+    </xs:documentation>
+  </xs:annotation>
+  <xs:element name="maxTextureScaleFactor" type="xs:integer">
+    <xs:annotation>
+      <xs:documentation xml:lang="en">
+        Factor which is used to repeat the texture in hoizontal and vertical direction. A value > 1 creates a new texture-file in memory which repeats the input pixels in texture-coordinate-space.
+      </xs:documentation>
+    </xs:annotation>
+  </xs:element>
+  <xs:element name="texturePath" type="xs:string">
+    <xs:annotation>
+      <xs:documentation xml:lang="en">
+        Path to the folder which contains the textures which can be applied to the finalized model.
+      </xs:documentation>
+    </xs:annotation>
+  </xs:element>
+  <xs:element name="importModels">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="sy:supportedModelCategories"/>
+        <xs:element ref="sy:modelPath"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="exportModels" >
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="exportFolder" type="xs:anyURI" >
+          <xs:annotation>
+            <xs:documentation xml:lang="en">
+              Folder on local file-system where exported files are stored.
+            </xs:documentation>
+          </xs:annotation>
+        </xs:element>
+        <xs:element name="exportFile" type="xs:token" >
+          <xs:annotation>
+            <xs:documentation xml:lang="en">
+              Name of the export-file.
+            </xs:documentation>
+          </xs:annotation>
+        </xs:element>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+  <xs:element name="supportedModelCategories" type="xs:string">
+    <xs:annotation>
+      <xs:documentation xml:lang="en">
+        Commaseparated list of 3D-model-categories, which are currently support by the system. To add models to one of the listed categories, their filenames have to start with one of the listed category-names.
+      </xs:documentation>
+    </xs:annotation>
+  </xs:element>
+  <xs:element name="modelPath" type="xs:string">
+    <xs:annotation>
+      <xs:documentation xml:lang="en">
+        Path to the local folder which contains models which can be added to the constructed building.
+      </xs:documentation>
+    </xs:annotation>
+  </xs:element>
+</xs:schema>

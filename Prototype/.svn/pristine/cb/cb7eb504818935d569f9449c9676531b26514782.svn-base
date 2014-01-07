@@ -1,0 +1,174 @@
+package semantic.city.builder.prototype.graphics.complex;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import semantic.city.builder.math.MyPolygon;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.MyVectormath;
+import semantic.city.builder.math.Vertex3d;
+
+/**
+ * Klasse dient der Repraesentation einer objektorientierten Bounding Box (OBB)
+ * fuer ein beliebiges 3d-Modell.
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public class OBB extends BoundingBox {
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor zur Erstellung einer OBB
+	 * 
+	 * @param extremwerte
+	 *            Extremwerte bzgl. der uebergebenen OBB-Achsen
+	 * @param axes
+	 *            Achsen, die die Ausrichtung der OBB beschreiben
+	 */
+	public OBB(List<Float> extremwerte, List<MyVector3f> axes) {
+		super();
+		mAxes = axes;
+		computeCenter(extremwerte);
+		computePolygons();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Leerer Default-Konstruktor, wird fuer Kopien benoetigt
+	 */
+	public OBB() {
+		super();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Aktualisiert Polygonebenen etc. nachdem eine Transformation berechnet
+	 * wurde
+	 */
+	public void update() {
+		MyPolygon currentPoly = null;
+		for (int i = 0; i < mFaces.size(); i++) {
+			currentPoly = mFaces.get(i);
+
+			// aktualisiere das Poly mit den eigenen transformierten Vertices
+			// (ist erforderlich, da sich durch die Transformation alle Ebenen
+			// und Strahlen etc. geaendert haben)
+			currentPoly.update(currentPoly.getVertices());
+		}
+
+		recomputeAxisByPolygons();
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Falls die OBB transformiert wurde, muessen neben den Polygonen auch die
+	 * OBB-Achsen neu berechnet werden. Hierfuer verwendet man einfach die
+	 * Normalenvektoren der Faces
+	 */
+	private void recomputeAxisByPolygons() {
+
+		// durchlaufe die Polygone, verwende Normalenvektoren als Achsen, sofern
+		// sie nicht gedrehte Versionen bereits verwendeter Vektoren sind
+		List<MyVector3f> axisVectors = new ArrayList<MyVector3f>(3);
+		MyPolygon currentPoly = null;
+		float angle;
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		boolean usable;
+
+		// im prinzip muessen hier alle Vektoren 90°- oedr 180°-Winkel bilden
+
+		for (int i = 0; i < mFaces.size(); i++) {
+			currentPoly = mFaces.get(i);
+			usable = true;
+			for (int k = 0; k < axisVectors.size(); k++) {
+				LOGGER.debug("TESTING: " + currentPoly.getNormalPtr() + " "
+						+ axisVectors.get(k));
+				angle = mathHelper.calculateAngle(currentPoly.getNormalPtr(),
+						axisVectors.get(k));
+				LOGGER.debug("WINKEL: " + angle);
+				if (mathHelper.isWithinTolerance(angle, 0.0f, 0.01f)
+						|| mathHelper.isWithinTolerance(angle, 180.0f, 0.01f))
+					usable = false;
+			}
+			if (usable) {
+				LOGGER.debug("ADDED: " + currentPoly.getNormalPtr());
+				axisVectors.add(currentPoly.getNormal());
+			}
+		}
+
+		// setze die 3 gespeicherten Vektoren als Achsen der Bounding Box
+		mAxes = new ArrayList<MyVector3f>(3);
+		assert axisVectors.size() == 3 : "FEHLER: Es wurden "
+				+ axisVectors.size() + " Achsen ermittelt!";
+		mAxes.addAll(axisVectors);
+
+		// berechne die Extremwerte bzgl. der Achsen (dabei sollten sich die
+		// Grundausdehnungen nicht geaendert haben, allerdings kann sich die
+		// Achsenreihenfolge verschoben haben)
+		computeExtremeValuesByOBBVertices();
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode projiziert die Vertices der OBB auf die 3 OBB-Achsen, um dadurch
+	 * die Dimensionen der Bounding-Box bzgl. dieser Achsen zu bestimmen. Dies
+	 * ist bsw. dann erforderlich, wenn eine OBB transformiert wurde. Da die
+	 * OBB-Vertices dann aber bereits in den neuen Positionen zu finden sind,
+	 * benoetigt man nicht die Vertices des Quellobjekts, sondern kann sich auf
+	 * die bereits tranformierten Vertices beschraenken.
+	 */
+	private void computeExtremeValuesByOBBVertices() {
+
+		float u1 = -Float.MAX_VALUE, u2 = -Float.MAX_VALUE, u3 = -Float.MAX_VALUE;
+		float l1 = Float.MAX_VALUE, l2 = Float.MAX_VALUE, l3 = Float.MAX_VALUE;
+		float currentValue;
+		Vertex3d currentVertex = null;
+
+		MyVector3f currentAxis = null;
+
+		// projiziere alle Punkte auf die 3 Eigenvektoren und bestimme darueber
+		// die Ausdehnung der Boundingbox
+		for (int i = 0; i < mVertices.size(); i++) {
+			currentVertex = mVertices.get(i);
+			for (int k = 0; k < mAxes.size(); k++) {
+				currentAxis = mAxes.get(k);
+				currentValue = currentAxis.dot(currentVertex.getPositionPtr());
+
+				// MinMax-Werte aktualisieren
+				if (k == 0) {
+					if (currentValue > u1)
+						u1 = currentValue;
+					if (currentValue < l1)
+						l1 = currentValue;
+				} else if (k == 1) {
+					if (currentValue > u2)
+						u2 = currentValue;
+					if (currentValue < l2)
+						l2 = currentValue;
+				} else if (k == 2) {
+					if (currentValue > u3)
+						u3 = currentValue;
+					if (currentValue < l3)
+						l3 = currentValue;
+				}
+			}
+		}
+
+		// Mittelpunkt berechnen
+		List<Float> extremwerte = new ArrayList<Float>(6);
+		extremwerte.add(u1);
+		extremwerte.add(l1);
+		extremwerte.add(u2);
+		extremwerte.add(l2);
+		extremwerte.add(u3);
+		extremwerte.add(l3);
+		computeCenter(extremwerte);
+
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

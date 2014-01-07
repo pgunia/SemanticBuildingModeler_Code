@@ -1,0 +1,351 @@
+package semantic.city.builder.prototype.graphics.complex;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import javax.media.opengl.GL;
+
+import processing.core.PApplet;
+import semantic.city.builder.configurationservice.model.enums.FloorPosition;
+import semantic.city.builder.configurationservice.model.enums.Side;
+import semantic.city.builder.math.MyPolygon;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.Vertex3d;
+import semantic.city.builder.prototype.enums.QuadType;
+import semantic.city.builder.prototype.graphics.primitives.AbstractQuad;
+import semantic.city.builder.prototype.service.Texture;
+import semantic.city.builder.prototype.service.TextureManagement.TextureCategory;
+
+/**
+ * 
+ * @author Patrick Gunia Klasse dient der Verwaltung einzelner Stockwerke
+ *         innerhalb eines Gebauedes
+ * 
+ */
+
+public class FloorComplex extends FreeComplex {
+
+	/** Position des Stockwerks innerhalb eines Gebauedes bsw. Ground */
+	protected FloorPosition mFloorPosition = null;
+
+	/** Innere Wandstruktur des Stockwerks, bsw. fuer Innenraeume */
+	private IndoorFloorComplex mIndoor = null;
+
+	/** Nummer des Stockwerks in einer fortlaufenden Nummerierung */
+	protected Integer mFloorPositionIndex = null;
+
+	/**
+	 * Stockwerksinstanzen koennen komplexe Objekte enthalten, bsw. Fenster etc.
+	 * Sobald ein Stockwerk aber einem Gebauede hinzugefuegt wird, werden die
+	 * Komponenten automatisch dem Gebaeude hinzugefuegt und der Buffer wird
+	 * geleert
+	 */
+	private List<AbstractComplex> mComponents = null;
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public String getType() {
+		return "floor";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	protected AbstractComplex cloneConcreteComponent() {
+		// isTop ist immer false, da beim Cloning bereits die Verschiebung
+		// bereits durchgefuehrt wurde
+		FloorComplex newObject = new FloorComplex(mParent, mFootprint, mHeight,
+				mNormalToDirectionMap, mFloorPosition, mFloorPositionIndex,
+				false);
+		return newObject;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Standard-Konstruktor
+	 * 
+	 * @param parent
+	 *            Applet-Instanz, die fuer das Zeichnen des komplexen Objekts
+	 *            benoetigt wird
+	 * @param vertices
+	 *            Liste mit Vertices, die den Grundriss im Uhrzeigersinn
+	 *            definieren
+	 * @param height
+	 *            Hoehe des komplexen Objekts
+	 * @param directionToSideMap
+	 *            Zuordnung von Face-Normalen zu Ausrichtungen, darueber kann
+	 *            man automatisiert Richtungen fuer die Faces setzen
+	 * @param floorPosition
+	 *            Position des Stockwerks innerhalb des Gebaeudes
+	 * @param floorPositioningIndex
+	 *            Numerischr Index, der die Position des Stockwerks innerhalb
+	 *            des Gebaeudes festlegt
+	 * @param isTop
+	 *            Flag zeigt an, ob das uebergebene Polygon die Deckenflaeche
+	 *            beschreibt
+	 */
+	public FloorComplex(PApplet parent, List<Vertex3d> vertices, Float height,
+			Map<MyVector3f, Side> directionToSideMap,
+			FloorPosition floorPosition, Integer floorPositionIndex,
+			boolean isTop) {
+		super(parent, vertices, height, directionToSideMap, isTop);
+		mFloorPosition = floorPosition;
+		mFloorPositionIndex = floorPositionIndex;
+		mComponents = new ArrayList<AbstractComplex>();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor mit Uebergabe eines Polygons anstelle einer Vertexliste
+	 * 
+	 * @param parent
+	 *            Applet-Instanz, die fuer das Zeichnen des komplexen Objekts
+	 *            benoetigt wird
+	 * @param vertices
+	 *            Liste mit Vertices, die den Grundriss im Uhrzeigersinn
+	 *            definieren
+	 * @param height
+	 *            Hoehe des komplexen Objekts
+	 * @param directionToSideMap
+	 *            Zuordnung von Face-Normalen zu Ausrichtungen, darueber kann
+	 *            man automatisiert Richtungen fuer die Faces setzen
+	 * @param floorPosition
+	 *            Position des Stockwerks innerhalb des Gebaeudes
+	 * @param floorPositioningIndex
+	 *            Numerischr Index, der die Position des Stockwerks innerhalb
+	 *            des Gebaeudes festlegt
+	 * @param isTop
+	 *            Flag zeigt an, ob das uebergebene Polygon die Deckenflaeche
+	 *            beschreibt
+	 */
+	public FloorComplex(final PApplet parent, final MyPolygon poly,
+			final Float height, final Map<MyVector3f, Side> directionToSideMap,
+			final FloorPosition floorPosition,
+			final Integer floorPositionIndex, final boolean isTop) {
+		super(parent, poly, height, directionToSideMap, isTop);
+		mFloorPosition = floorPosition;
+		mFloorPositionIndex = floorPositionIndex;
+		mComponents = new ArrayList<AbstractComplex>();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	/**
+	 * Methode muss ueberschrieben werden, da MergedComplex-Instanzen aus den berechneten Umrissen von TOP-Quads erzeugt werden, die
+	 * darum zunaechst auf die Bodenhoehe verschoben werden. Dies ist bei FloorComplex-Instanzen nicht der Fall.
+	 */
+	public void create() {
+
+		assert mFootprint != null : "FEHLER: Es wurde kein polygonaler Grundriss gesetzt!";
+		assert mHeight != null : "FEHLER: Es ist keine Hoehe angegeben";
+
+		extrudeFootprint();
+
+		// alle Berechnungen durchfuehren
+		finalizeCreation();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mFloorPosition
+	 */
+	public FloorPosition getFloorPosition() {
+		return mFloorPosition;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mFloorPosition
+	 *            the mFloorPosition to set
+	 */
+	public void setFloorPosition(FloorPosition mFloorPosition) {
+		this.mFloorPosition = mFloorPosition;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mFloorPositionIndex
+	 */
+	public Integer getFloorPositionIndex() {
+		return mFloorPositionIndex;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mFloorPositionIndex
+	 *            the mFloorPositionIndex to set
+	 */
+	public void setFloorPositionIndex(Integer mFloorPositionIndex) {
+		this.mFloorPositionIndex = mFloorPositionIndex;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mIndoor
+	 */
+	public IndoorFloorComplex getIndoor() {
+		return mIndoor;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mIndoor
+	 *            the mIndoor to set
+	 */
+	public void setIndoor(IndoorFloorComplex mIndoor) {
+
+		// verwalte einen direkten Zeiger auf das Indoor-Objekt des Stockwerks
+		this.mIndoor = mIndoor;
+
+		// und fuege es auch zu den Komponenten hinzu, damit es zum Vertexbuffer
+		// des Gebauede geadded wird
+		mComponents.add(mIndoor);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	// Sonderverarbeitungen fuer die Behandlungen der Indoor-Floors => Delegates
+	// die folgenden Methoden leiten die Methodenaufrufe an die nach aussen
+	// nicht sichtbaren IndoorFloor-Instanzen weiter
+	@Override
+	public void drawGL(Boolean drawTextures, GL gl) {
+		super.drawGL(drawTextures, gl);
+		if (mIndoor != null)
+			mIndoor.drawGL(drawTextures, gl);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public void draw(Boolean drawTextures) {
+		super.draw(drawTextures);
+		if (mIndoor != null)
+			mIndoor.draw(drawTextures);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public void setTextureByCategory(TextureCategory category) {
+		super.setTextureByCategory(category);
+		if (mIndoor != null)
+			mIndoor.setTextureByCategory(category);
+		LOGGER.info("CALL");
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public Float computeTextureCoordinates() {
+		Float scale = super.computeTextureCoordinates();
+		// die Koordinaten der Innenraeume werden vollkommen unabhaengig von
+		// anderen Komponenten berechnet
+		if (mIndoor != null) {
+			mIndoor.computeTextureCoordinates();
+		}
+		return scale;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public void setTexture(String category, Texture texture) {
+		
+		// speichere die Kategorie-Texturzuordnung im aktuellen Map-Objekt
+		addTextureToMap(category, texture);
+		for(AbstractQuad current : mOutdoorQuads) {
+				current.setTextureForCategory(category, texture);
+			}
+		if (mIndoor != null)
+			mIndoor.setTexture(category, texture);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Liefert alle Quads, die dem Uebergabetyp entsprechen. Bei Floor-Instanzen
+	 * muss man fuer die Berechnung beruecksichtigen, dass Indoor-Instanzen
+	 * vorliegen koennen
+	 * 
+	 * @param type
+	 *            Typ der zu liefernden Quads
+	 * @return Liste mit Quads, die dem Uebergabetyp entsprechen
+	 */
+	protected List<AbstractQuad> getQuads(QuadType type) {
+		ArrayList<AbstractQuad> quadBuffer = new ArrayList<AbstractQuad>();
+		switch (type) {
+		case OUTDOOR:
+			// if(mIndoor != null) quadBuffer.addAll(mIndoor.getOutdoorQuads());
+			quadBuffer.addAll(mOutdoorQuads);
+			return quadBuffer;
+		case INDOOR:
+			// if(mIndoor != null) quadBuffer.addAll(mIndoor.getIndoorQuads());
+			quadBuffer.addAll(mIndoorQuads);
+			return quadBuffer;
+		case ALL:
+			List<AbstractQuad> outdoorBuffer = getOutdoorQuads();
+			List<AbstractQuad> indoorBuffer = getIndoorQuads();
+			quadBuffer.addAll(outdoorBuffer);
+			quadBuffer.addAll(indoorBuffer);
+			mAllQuads = quadBuffer;
+			return mAllQuads;
+		default:
+			LOGGER.error("Unbekannter Quad-Typ: " + type);
+			return null;
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public boolean hasIndoor() {
+		if (mIndoor != null)
+			return true;
+		else
+			return false;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Fuegt eine komplexe Komponente zum Buffer des Stockwerks hinzu, sofern
+	 * dieses bereits zu einem Composite-Objekt geadded ist, wird die Komponente
+	 * direkt zum darueberliegenden Parent-Objekt weitergeleitet, sonst wird sie
+	 * gebuffert und spaeter weitergereicht
+	 * 
+	 * @param component
+	 *            Komponente,
+	 */
+	public void addComponent(AbstractComplex component) {
+
+		if (mComplexParent != null
+				&& mComplexParent instanceof CompositeComplex) {
+			CompositeComplex complex = (CompositeComplex) mComplexParent;
+			complex.addComplex(component);
+		} else {
+			if (!mComponents.contains(component))
+				mComponents.add(component);
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Liefert alle gebufferten Komponenten des Stockwerks
+	 * 
+	 * @return Liste mit gebufferten, komplexen Objekten
+	 */
+	public List<AbstractComplex> getComponents() {
+		return mComponents;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Leert den Komponentenbuffer des Stockwerks
+	 */
+	public void clearComponentBuffer() {
+		mComponents.clear();
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

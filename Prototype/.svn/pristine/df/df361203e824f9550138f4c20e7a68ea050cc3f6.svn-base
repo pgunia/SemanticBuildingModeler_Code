@@ -1,0 +1,5 @@
+package semantic.city.builder.prototype.enums;
+
+public enum HorizontalAlignment {
+	LEFT_CORNER, LEFT, CENTER, RIGHT, RIGHT_CORNER;
+}

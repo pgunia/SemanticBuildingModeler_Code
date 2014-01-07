@@ -1,0 +1,344 @@
+package semantic.city.builder.prototype.algorithm;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+import java.util.Stack;
+
+import org.apache.log4j.Logger;
+
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.MyVectormath;
+import semantic.city.builder.math.Vertex3d;
+import semantic.city.builder.prototype.service.PrototypeHelper;
+
+/**
+ * 
+ * @author Patrick Gunia Klasse bietet implementiert den Graham-Scan-Algorithmus
+ *         zur Berechnung einer konvexen Huelle fuer eine Menge von Punkten in
+ *         einer Ebene. Die Implementation geht davon aus, dass sich saemtliche
+ *         Punkte der Eingabe in der xy-Ebene befinden.
+ *         http://de.wikipedia.org/wiki/Graham_Scan
+ */
+
+public class GrahamScan {
+
+	/** Logging-Instanz */
+	protected static Logger LOGGER = Logger.getLogger(GrahamScan.class);
+
+	/** Eingabevertices, fuer die eine konvexe Huelle berechnet wird */
+	private List<Vertex3d> mVertices = null;
+
+	/** Liste mit ConvexHull-Vertex-Instanzen */
+	private List<ConvexHullVertex> mCHVertices = null;
+
+	/**
+	 * 
+	 * @author Patrick Gunia Klasse unterstuetzt die Convex-Hull-Berechnung
+	 *         durch die Definition einer Datenstruktur, die Vertices ihren
+	 *         Winkeln bzgl.
+	 * 
+	 */
+	private class ConvexHullVertex {
+
+		/**
+		 * Winkel zwischen der Geraden von P0 auf das aktuelle Vertex und der
+		 * x-Achse
+		 */
+		private Float mAngle = null;
+
+		/** Vertex */
+		private Vertex3d mVertex = null;
+
+		/** Entfernung des aktuellen Vertex vom Startpunkt */
+		private Float mDistance = null;
+
+		// ------------------------------------------------------------------------------------------
+
+		/**
+		 * @param mAngle
+		 *            Berechneter Winkel
+		 * @param mVertex
+		 *            Vertex, fuer das der Winkel berechnet wurde
+		 */
+		public ConvexHullVertex(Float mAngle, Vertex3d mVertex, float distance) {
+			super();
+			this.mAngle = mAngle;
+			this.mVertex = mVertex;
+			this.mDistance = distance;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		/**
+		 * @return the mAngle
+		 */
+		public Float getAngle() {
+			return mAngle;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		/**
+		 * @return the mVertex
+		 */
+		public Vertex3d getVertex() {
+			return mVertex;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		/**
+		 * @return the mDistance
+		 */
+		public Float getDistance() {
+			return mDistance;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		/*
+		 * (non-Javadoc)
+		 * 
+		 * @see java.lang.Object#toString()
+		 */
+		@Override
+		public String toString() {
+			return "ConvexHullVertex [mAngle=" + mAngle + ", mVertex="
+					+ mVertex + ", mDistance=" + mDistance + "]";
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Default-Konstruktor, bekommt als Uebergabe eine Liste von Vertices, fuer
+	 * die die konvexe Huelle berechnet werden soll
+	 * 
+	 * @param vertices
+	 *            Vertexwolke, fuer die eine konvexe Huelle bestimmt werden soll
+	 */
+	public GrahamScan(List<Vertex3d> vertices) {
+		mVertices = vertices;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Hauptverarbeitungsroutine, berechnet die konvexe Huelle fuer die
+	 * uebergebene Punktemenge ueber das Graham-Scan-Verfahren
+	 * 
+	 * @return Liste mit Vertices, die die konvexe Huelle fuer die Punktemenge
+	 *         bilden
+	 */
+	public List<Vertex3d> computeConvexHull() {
+
+		assert mVertices != null : "FEHLER: Es wurden keine Vertices fuer die Berechnung uebergeben!";
+		List<Vertex3d> result = null;
+
+		Vertex3d start = PrototypeHelper.getInstance()
+				.findStartPoint(mVertices);
+
+		// errechne die nach Winkeln sortierte Vertexliste
+		computeSortedAngleList(start);
+
+		// fuehre die Berechnungen durch
+		result = process(start);
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode berechnet eine Liste mit ConvexHullVertices, die basierend auf
+	 * dem Winkel zwischen der Gerade vom Startpunkt auf die einzelnen Vertices
+	 * und der x-Achse sortiert wurden.
+	 */
+	private void computeSortedAngleList(Vertex3d start) {
+
+		MyVectormath mathHelper = MyVectormath.getInstance();
+
+		MyVector3f xAxis = new MyVector3f(1.0f, 0.0f, 0.0f);
+
+		mCHVertices = new ArrayList<ConvexHullVertex>(mVertices.size() - 1);
+		Vertex3d currentVertex = null;
+
+		MyVector3f currentDirection = null;
+		Float currentAngle = null;
+		ConvexHullVertex currentCHVert = null;
+		float distance;
+
+		for (int i = 0; i < mVertices.size(); i++) {
+			currentVertex = mVertices.get(i);
+
+			// Startvertex skippen
+			if (currentVertex.equals(start))
+				continue;
+
+			// berechne den Winkel zwischen der Gerade vom Start auf das
+			// aktuelle Vertex und der x-Achse
+			currentDirection = new MyVector3f();
+			currentDirection.sub(start.getPositionPtr(),
+					currentVertex.getPositionPtr());
+			distance = currentDirection.length();
+			currentAngle = mathHelper.calculateAngle(currentDirection, xAxis);
+
+			currentCHVert = new ConvexHullVertex(currentAngle, currentVertex,
+					distance);
+			mCHVertices.add(currentCHVert);
+		}
+
+		// sortiere die Vertices abschliessend anhand ihrer Winkel
+		sortCHVertsByAngle();
+		removeVertsWithSameAngle();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft die Liste sortierter Vertices und entfernt Vertices
+	 * mit gleichem Winkel, wobei immer das Vertex beibehalten wird, dessen
+	 * Entfernung zum Startvertex am groessten ist HIER MUSS EVTL. AUCH
+	 * TOLERANZBASIERT GEARBEITET WERDEN
+	 */
+	private void removeVertsWithSameAngle() {
+
+		Set<ConvexHullVertex> deleteList = new HashSet<ConvexHullVertex>(
+				mCHVertices.size());
+		float currentMaxDistance = -1, currentAngle = -1, currentTestAngle = -1;
+		ConvexHullVertex currentMaxVert = null, currentVert = null;
+
+		for (int i = 0; i < mCHVertices.size(); i++) {
+			currentVert = mCHVertices.get(i);
+			currentAngle = currentVert.getAngle();
+			if (currentAngle == currentTestAngle) {
+
+				// wenn die vorab gespeicherte Distanz groesser ist, als die
+				// aktuelle Distanz, loesche das aktuelle Vertex
+				if (currentMaxDistance > currentVert.getDistance()) {
+					deleteList.add(currentVert);
+					deleteList.remove(currentMaxVert);
+				}
+				// sonst das vorher maximale
+				else {
+					currentTestAngle = currentAngle;
+					currentMaxDistance = currentMaxVert.getDistance();
+					deleteList.add(currentMaxVert);
+					currentMaxVert = currentVert;
+				}
+			} else {
+				currentMaxVert = currentVert;
+				currentTestAngle = currentAngle;
+				currentMaxDistance = currentMaxVert.getDistance();
+			}
+		}
+		LOGGER.debug("Insgesamt werden " + deleteList.size()
+				+ " Vertices geloescht!");
+		Iterator<ConvexHullVertex> vertIter = deleteList.iterator();
+		while (vertIter.hasNext()) {
+			currentVert = vertIter.next();
+			mCHVertices.remove(currentVert);
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode sortiert die berechneten ConvexHull-Vertices anhand ihrer Winkel
+	 * aufsteigend
+	 */
+	private void sortCHVertsByAngle() {
+		Collections.sort(mCHVertices, new Comparator<ConvexHullVertex>() {
+			public int compare(ConvexHullVertex o1, ConvexHullVertex o2) {
+				return o1.getAngle().compareTo(o2.getAngle());
+			}
+		});
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet, ob Punkt p1 links von Punkt p2 liegt, also ob die Linie
+	 * vom Start zu p1 einen groesseren Winkel mit der x-Achsee aufweist, als
+	 * die Linie vom Startpunkt zu p2. Der Vorteil dieses Ansatzes ist die
+	 * Tatsache, dass er keinerlei trigonometrische Funktionen benoetigt. < 0,
+	 * wenn P2 rechts von P1 liegt, = 0, falls P2 auf der Linie P0->P1 liegt, >
+	 * 0, falls P2 links von P1 liegt
+	 * 
+	 * @param start
+	 *            Startpunkt des Verfahrens
+	 * @param p1
+	 *            Erster Testpunkt
+	 * @param p2
+	 *            Zweiter Testpunkt
+	 * @return True, falls P2 links von P0->P1 liegt, False sonst
+	 */
+	private Boolean isLeft(Vertex3d start, Vertex3d p1, Vertex3d p2) {
+		Float result = MyVectormath.getInstance().isLeft(
+				start.getPositionPtr(), p1.getPositionPtr(),
+				p2.getPositionPtr());
+		// wenn P2 rechts von P0->P1 liegt, gib true zurueck
+		if (result > 0)
+			return true;
+		else
+			return false;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuehrt die Berechnungsschritte des Verfahrens durch
+	 * 
+	 * @param start
+	 *            Startvertex, von dem ausgehend die Berechnungen durchgefuehrt
+	 *            werden
+	 * @return Liste mit Vertices, die die konvexe Huelle fuer die Eingabepunkte
+	 *         bilden
+	 */
+	private List<Vertex3d> process(Vertex3d start) {
+		Stack<Vertex3d> vertexStack = new Stack<Vertex3d>();
+
+		// ersten beiden Elemente auf den Stack pushen
+		vertexStack.push(start);
+		vertexStack.push(mCHVertices.get(0).getVertex());
+
+		Vertex3d previous = null, previousPrevious = null, currentVertex = null;
+		Integer currentIndex = null;
+
+		for (int i = 1; i < mCHVertices.size(); i++) {
+
+			currentVertex = mCHVertices.get(i).getVertex();
+			currentIndex = vertexStack.size() - 1;
+			previous = vertexStack.get(currentIndex);
+			previousPrevious = vertexStack.get(currentIndex - 1);
+
+			// wenn das aktuelle Vertex nicht links der Linie
+			// previousPrevious->previous liegt, gehe weiter durch den Stack
+			while (!isLeft(previousPrevious, previous, currentVertex)) {
+
+				LOGGER.debug("PP: " + previousPrevious.getPositionPtr()
+						+ " P: " + previous.getPositionPtr() + " C: "
+						+ currentVertex.getPositionPtr());
+
+				// entferne das oberste Element
+				vertexStack.pop();
+				currentIndex = vertexStack.size() - 1;
+				previous = vertexStack.get(currentIndex);
+				previousPrevious = vertexStack.get(currentIndex - 1);
+
+			}
+			// aktuelles Vertex auf den Stack legen
+			vertexStack.push(currentVertex);
+		}
+
+		// Verarbeitung abgeschlossen, fuege alle Elemente zu einer
+		// Ergebnisliste hinzu
+		List<Vertex3d> result = new ArrayList<Vertex3d>(vertexStack.size());
+		result.addAll(vertexStack);
+		return result;
+
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

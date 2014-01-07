@@ -1,0 +1,80 @@
+03 Nov 2013 12:23:10 WARN - XMLParsingHelper.getFloat(101) | FEHLER: Es existiert kein Kindelement mit Namen equalWeightForRoofSides im Namespace https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Roof
+03 Nov 2013 12:23:11 WARN - XMLParsingHelper.getString(124) | FEHLER: Es existiert kein Kindelement mit Namen reuseFloorDefinition im Namespace https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Floor
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4674 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4680 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4668 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4379 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4385 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4373 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4686 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4391 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4739 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4745 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4733 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4727 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4662 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4721 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4367 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4444 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4438 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4450 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4432 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4426 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4656 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4715 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4361 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4420 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4804 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4798 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4792 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4786 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4780 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4774 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4709 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4650 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4355 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4768 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4414 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4503 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4497 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4509 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4491 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4485 Typ: VertexWrapper
+03 Nov 2013 12:24:40 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4479 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4473 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4863 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4857 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4851 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4845 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4839 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4833 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4827 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4703 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4762 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4644 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4349 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4408 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4467 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4821 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4568 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4562 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4556 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4550 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4544 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4538 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4532 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4526 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4627 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4621 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4615 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4609 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4603 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4597 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4591 Typ: VertexWrapper
+03 Nov 2013 12:24:41 ERROR - SynthesisProcessing.chooseState(769) | Keine Zuweisungen fuer Komponente 4585 Typ: VertexWrapper
+03 Nov 2013 12:24:41 WARN - SynthesisProcessing.chooseComponent(751) | Gewaehlte Komponente stammt nicht aus der Liste bereits angefasster Komponenten!
+03 Nov 2013 12:24:41 WARN - SynthesisProcessing.chooseComponent(751) | Gewaehlte Komponente stammt nicht aus der Liste bereits angefasster Komponenten!
+03 Nov 2013 12:24:41 WARN - SynthesisProcessing.chooseComponent(751) | Gewaehlte Komponente stammt nicht aus der Liste bereits angefasster Komponenten!
+03 Nov 2013 12:24:42 WARN - BuildingComponentsConfiguration.getComponentConfigurationByType(144) | Fuer den Komponententyp 'WINDOWLEDGE' wurde keine Konfiguration geladen!
+03 Nov 2013 12:24:42 WARN - BuildingComponentsConfiguration.getComponentConfigurationByType(144) | Fuer den Komponententyp 'PILLAR' wurde keine Konfiguration geladen!
+03 Nov 2013 12:24:42 WARN - BuildingComponentsConfiguration.getComponentConfigurationByType(144) | Fuer den Komponententyp 'FASCIA' wurde keine Konfiguration geladen!

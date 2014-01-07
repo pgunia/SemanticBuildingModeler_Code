@@ -1,0 +1,298 @@
+package semantic.city.builder.weightedstraightskeleton.algorithm;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Vector;
+
+import math.Ray;
+
+import org.apache.log4j.Logger;
+
+import semantic.city.builder.weightedstraightskeleton.math.MySkeletonVectormath;
+
+/**
+ * @author Patrick Gunia
+ * 
+ *         Verwaltungsklasse fuer saemtliche berechneten VirtualEdge-Strukturen.
+ * 
+ */
+public class VirtualEdgeManager {
+
+	/** Logger */
+	protected static Logger logger = Logger.getLogger("weightedstraightskeleton.skeleton.algorithm.virtualedgemanager");
+
+	
+	/**
+	 * Vector haelt alle Kanten vor, die fuer die aktuelle Verarbeitungsebene
+	 * erzeugt und verwaltet werden
+	 */
+	private List<VirtualEdge> mVirtualEdges = null;
+
+	/**
+	 * Instanz der Mathebibliothek, die an die VirtualEdges-Instanzen
+	 * weitergegeben wird
+	 */
+	private MySkeletonVectormath mMathHelper = null;
+
+	/** Standardkonstruktor 
+	 * @param mathHelper */
+	public VirtualEdgeManager(MySkeletonVectormath mathHelper) {
+		mVirtualEdges = new Vector<VirtualEdge>();
+		mMathHelper = mathHelper;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode dient dem Hinzufuegen von Vertices zu virtuellen Kanten. Wenn
+	 * noch keine Kante fuer diese Punkte existiert, wird eine neue angelegt.
+	 * 
+	 * @param start
+	 *            Startvertex der Kante, fuer die eine virtuelle Kante erstellt
+	 *            werden soll
+	 * @param end
+	 *            Endvertex der Kante, fuer die eine virtuelle Kante erstellt
+	 *            werden soll
+	 * @return Die virtuelle Kante, der die Vertices hinzugefuegt wurden
+	 * 
+	 */
+	public VirtualEdge addVertsToVirtualEdge(SkeletonVertex start,
+			SkeletonVertex end) {
+
+		VirtualEdge currentEdge = null;
+		String message;
+
+		// durchlaufe alle bereits vorhandenen Kanten und pruefe, ob bereits
+		// eine Kante fuer die beiden Vertices existiert
+		for(int i = 0; i < mVirtualEdges.size(); i++) {
+			currentEdge = mVirtualEdges.get(i);
+
+			// wenn eine Kante gefunden wurde, fuege die Vertices hinzu und
+			// breche ab
+			if (currentEdge.arePointsOnEdge(start, end)) {
+				currentEdge.addVertexToEdge(start);
+				currentEdge.addVertexToEdge(end);
+				
+				message = "Vertices start: " + start + " end: " + end
+				+ " wurden zur Kante " + currentEdge + " hinzugefuegt";
+				logger.debug(message);
+			
+				return currentEdge;
+			}
+		}
+
+		// es wurde keine Kante gefunden, erzeuge eine neue
+		VirtualEdge newEdge = new VirtualEdge(start, end, mMathHelper);
+		mVirtualEdges.add(newEdge);
+		
+		logger.debug("Es wurde eine neue virtuelle Kante: " + newEdge + " erstellt") ;
+		
+		return newEdge;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode versucht, ein Twin-Vertex zu einer (oder mehreren) VirtualEdge-Datenstrukturen hinzuzufuegen
+	 * @param twin Zwilling, das zu VirtualEdge-Strukturen geadded werden soll
+	 * @return True, sofern es zu mindestens einer Kante hinzugefuegt wurde, False sonst
+	 */
+	public boolean addTwinVertexToVirtualEdge(SkeletonVertex twin) {
+		Iterator<VirtualEdge> edgeIter = mVirtualEdges.iterator();
+		VirtualEdge currentEdge = null;
+		boolean added = false;
+		
+		// hole den Zwilling des Vertex, also das Originalvertex, da nur dieses mit Sicherheit auf der Kante liegt
+		SkeletonVertex originalVert = twin.getTwinVertex();
+		
+		// suche nach der Kante, die das originale Vertex enthaelt
+		while(edgeIter.hasNext()) {
+			currentEdge = edgeIter.next();
+			
+			// wenn eine Kante gefunden wurde, fuege das Vertex hinzu
+			if(currentEdge.isVertexOnEdge(originalVert)) {
+				currentEdge.addVertexToEdge(twin);
+				added = true;
+			}
+		}
+		
+		return added;
+		
+	}
+	
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Liefert alle gespeicherten Kanten als Strahlen zurueck.
+	 * @return Vector mit allen allen virtuellen Kanten in einer Ray-Repraesentation
+	 */
+	public List<Ray> getVirtualEdgesAsRays() {
+
+		List<Ray> edgeBuffer = new ArrayList<Ray>();
+
+		Iterator<VirtualEdge> edgeIter = mVirtualEdges.iterator();
+		while (edgeIter.hasNext()) {
+			edgeBuffer.add(edgeIter.next().getRay());
+		}
+
+		return edgeBuffer;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft alle gespeicherten virtuellen Kanten und ruft ihre
+	 * Sortierungsroutinen auf.
+	 */
+	public void finalizeVirtualEdgeStructures() {
+
+		for(int i = 0; i < mVirtualEdges.size(); i++) mVirtualEdges.get(i).sortEdgeVerticesByDistance();
+		// System.out.println("Insgesamt wurden " + mVirtualEdges.size() + " VirtualEdge-Strukturen aufgebaut");
+	}	
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String toString() {
+		String lineBreak = System.getProperty("line.separator");
+		String result = "Insgesamt befinden sich " + mVirtualEdges.size() + " virtuelle Kanten im Edge-Manager" + lineBreak;
+		for (int i = 0; i < mVirtualEdges.size(); i++) {
+			result += " Edge " + i + ": " + mVirtualEdges.get(i).toString()
+					+ lineBreak;
+		}
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode greift auf alle virtuellen Kanten zurueck und versucht, fuer das
+	 * Vertex start einen Nachbar auf der virtuellen Kante in Richtung des
+	 * currentNeighbour zu finden. Sofern ein solcher Nachbar gefunden wurde,
+	 * gibt die Methode diesen zurueck, sonst wird das urspruengliche
+	 * Neighbour-Vertex verwendet
+	 * 
+	 * @param start
+	 *            Vertex, fuer das ein Nachbar auf der Kante bestimmt werden
+	 *            soll
+	 * @param currentNeighbour
+	 *            Aktueller Nachbar, wird verwendet, um die Richtung zu
+	 *            bestimmen, in der man sich auf der Kante bewegen muss
+	 * @return Der neue Nachbar des start-Vertex
+	 */
+	public SkeletonVertex getNeighbourForVertex(SkeletonVertex start,
+			SkeletonVertex currentNeighbour) {
+
+		VirtualEdge relevantEdge = getEdgeForVertices(start, currentNeighbour);
+		
+		// wenn fuer die beiden Vertices keine virtuelle Kante bestimmt werden konnte, gebe den Eingabenachbar wieder zurueck
+		if(relevantEdge == null) return currentNeighbour;
+		
+		SkeletonVertex newNeighbour = relevantEdge.getNeighbourForVertex(start, currentNeighbour);
+		// System.out.println("Angefragtes Vertex: " + start + " Nachbar: " + currentNeighbour + " Rueckgabe: " + newNeighbour);
+		
+		return newNeighbour;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode bestimmt einen neuen Nachbarn fuer den uebergebenen Nachbarn, der das uebergebene geloeschte Vertex ersetzt
+	 * @param neighbour Vertex, fuer das ein neuer Nachbar bestimmt werden soll
+	 * @param deletedVertex Vertex, das der vorherige Nachbar war, aber geloescht wurde
+	 * @return Vertex, das als neuer Nachbar des uebergebenen Vertex fungiert
+	 */
+	public SkeletonVertex getNeighbourForDeletedVertex(SkeletonVertex neighbour, SkeletonVertex deletedVertex) {
+		
+		VirtualEdge relevantEdge = getEdgeForVertices(neighbour, deletedVertex);
+		
+		// wenn fuer die beiden Vertices keine virtuelle Kante bestimmt werden konnte, versuche ein manuelles Update
+		// weise dem Nachbarn mit Index i den Nachbarn mit Index i des geloeschten Vertex zu
+		if(relevantEdge == null) {
+			
+			// bestimme den Index des Nachbarn im geloschten Vertex
+			int index = neighbour.getIndexForNeighbour(deletedVertex);
+			if(index != -1) {
+				if(index == 0) {
+					return deletedVertex.getNeighbourByIndex(0);
+				}
+				else if(index == 1) {
+					return deletedVertex.getNeighbourByIndex(1);
+				}
+			}
+			// gebe als Fallback das Vertex selber zurueck (dann gehen wenigstens Edge-Updates nicht vollkommen schief)
+			return neighbour;
+		}
+			
+
+		SkeletonVertex newNeighbour = relevantEdge.getNeighbourForDeletedVertex(neighbour, deletedVertex);
+		
+		// System.out.println("Nachbarschaftsupdate fuer geloeschtes Vertex: " + deletedVertex + " Nachbar: " + neighbour + " Rueckgabe: " + newNeighbour );
+		
+		// bestimme den Nachbarn auf der Kante und gebe ihn an den Aufrufer zurueck
+		return newNeighbour;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode versucht, ein Vertex mit Kind zu finden, das zwischen start und validNeighbour auf einer virtuellen Kante liegt
+	 * @param start Kinderloses Vertex, fuer das ein Ersatz bestimmt werden soll
+	 * @param validNeighbour Gueltiger Nachbar mit Kind
+	 * @param isStart Gibt an, ob es sich beim ersten Vertex um das Startvertex der Kante handelt
+	 * @return Vertex mit Kind auf einer virtuellen Kante zwischen start und validNeighbour, null sonst
+	 */
+	public SkeletonVertex getNeighbourForVertexForResult(SkeletonVertex start, SkeletonVertex validNeighbour, boolean isStart) {
+		
+		VirtualEdge relevantEdge = getEdgeForVertices(start, validNeighbour);
+		
+		// wenn keine virtuelle Kante fuer die Eingabevertices gefunden werden konnte, gebe null zurueck
+		if(relevantEdge == null) return null;
+				
+		// es konnte eine virtuelle Kante gefunden werden, versuche, ein Vertex auf dieser Kante zu bestimmen
+		SkeletonVertex newNeighbour = relevantEdge.getNeighbourForVertexForResult(start, validNeighbour, isStart);
+		
+		// System.out.println("Suche gueltigen Nachbar zwischen start: " + start + " und end: " + validNeighbour + " Rueckgabe: " +newNeighbour);
+		return newNeighbour;
+			
+		
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft alle virtuellen Kanten im Kantenbuffer und sucht eine Kante, auf der die beiden uebergebenen Vertices liegen
+	 * @param vertex1 Eingabevertex1
+	 * @param vertex2 Eingabevertex2
+	 * @return Kante, auf der beide Vertices liegen, sofern eine solche gefunden wurde, sonst null
+	 */
+	public VirtualEdge getEdgeForVertices(SkeletonVertex vertex1, SkeletonVertex vertex2) {
+		VirtualEdge currentEdge = null;
+		
+		// finde zunaechst die virtuelle Kante, auf der sich die beiden Vertices befinden
+		Iterator<VirtualEdge> edgeIter = mVirtualEdges.iterator();
+		while(edgeIter.hasNext()) {
+			currentEdge = edgeIter.next();
+			if(currentEdge.arePointsOnEdge(vertex1, vertex2)) {
+				return currentEdge;
+			}
+		}
+
+		// wenn fuer die beiden Vertices keine virtuelle Kante bestimmt werden konnte, gebe null zurueck
+		return null;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuegt alle uebergebenen Edges zum Edge-Vektor hinzu
+	 * @param edges Vector mit VirtualEdges, die zum aktuellen Manager hinzugefuegt werden
+	 * 
+	 */
+	public void addVirtualEdges(List<VirtualEdge> edges) {
+		mVirtualEdges.addAll(edges);
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return Vector mit allen VirtualEdges
+	 */
+	public List<VirtualEdge> getVirtualEdges() {
+		return mVirtualEdges;
+	}
+	// ------------------------------------------------------------------------------------------
+
+
+	
+
+}

@@ -1,0 +1,116 @@
+package semantic.building.modeler.modelsynthesis.model;
+
+import java.util.HashSet;
+import java.util.Set;
+
+import semantic.building.modeler.math.MyPolygon;
+
+/**
+ * Klasse modelliert Faceelemente, die fuer die Modelsynthese benoetigt werden
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public class Face extends ModelSynthesisBaseGeometry {
+
+	/** Polygon, das das Face beschreibt */
+	private transient MyPolygon mFacePoly = null;
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mState
+	 * @param mLabel
+	 * @param mFacePoly
+	 */
+	public Face(State mState, String mLabel, MyPolygon mFacePoly) {
+		super(mState, mLabel);
+		this.mFacePoly = mFacePoly;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mFacePoly
+	 */
+	public MyPolygon getFacePoly() {
+		return mFacePoly;
+	}
+
+	// -------------------------------------------------------------------------------------------
+
+	@Override
+	public Set<Face> getAdjacentFaces() {
+		return new HashSet<Face>();
+	}
+
+	// -------------------------------------------------------------------------------------------
+
+	@Override
+	public FacePosition getFacePosition(Face face) {
+		return null;
+	}
+
+	// -------------------------------------------------------------------------------------------
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		return "ID: " + mID;
+	}
+
+	// -------------------------------------------------------------------------------------------
+	@Override
+	public void setFace(final FacePosition position, final Face face) {
+		assert false : "FEHLER: Ungueltiger Methodenaufruf!";
+	}
+
+	// -------------------------------------------------------------------------------------------
+
+	@Override
+	public Set<ModelSynthesisBaseGeometry> getAdjacentComponents() {
+		return new HashSet<ModelSynthesisBaseGeometry>(0);
+	}
+
+	// -------------------------------------------------------------------------------------------
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see java.lang.Object#hashCode()
+	 */
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result
+				+ ((mFacePoly == null) ? 0 : mFacePoly.hashCode());
+		return result;
+	}
+
+	// -------------------------------------------------------------------------------------------
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see java.lang.Object#equals(java.lang.Object)
+	 */
+	@Override
+	public boolean equals(Object obj) {
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		Face other = (Face) obj;
+		if (getID() == other.getID())
+			return true;
+		return false;
+	}
+	// -------------------------------------------------------------------------------------------
+
+}

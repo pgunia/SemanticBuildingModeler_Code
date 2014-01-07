@@ -1,0 +1,28 @@
+package semantic.city.builder.math;
+
+import javax.vecmath.Matrix3d;
+
+/**
+ * @author Patrick Gunia
+ * 
+ * 
+ */
+public class MyMatrix3d extends Matrix3d {
+
+	public MyMatrix3d() {
+		super();
+		// TODO Auto-generated constructor stub
+	}
+
+	public MyMatrix3d(final double arg0, final double arg1, final double arg2,
+			final double arg3, double arg4, double arg5, double arg6,
+			double arg7, double arg8) {
+		super(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+	}
+
+	public MyMatrix3d(final double[] arg0) {
+		super(arg0);
+
+	}
+
+}

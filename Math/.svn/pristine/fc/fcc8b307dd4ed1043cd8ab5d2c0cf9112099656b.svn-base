@@ -1,0 +1,234 @@
+package semantic.building.modeler.math;
+
+/**
+ * 
+ * @author Patrick Gunia Klasse dient der Beschreibung von Vertices. Getter
+ *         dieser Klasse geben Kopien der Vertices und keine Pointer auf diese
+ *         zurueck
+ * 
+ */
+
+public class Vertex3d implements Cloneable {
+
+	/** Positionsvektor des Vertex */
+	protected transient MyVector3f mPosition = null;
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Leerer Default-Konstruktor
+	 */
+	public Vertex3d() {
+		super();
+		this.mPosition = new MyVector3f();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Konstruktor mit Positionsuebergabe
+	 * 
+	 * @param position
+	 */
+	public Vertex3d(final MyVector3f position) {
+		super();
+		this.mPosition = position;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param x
+	 * @param y
+	 * @param z
+	 */
+	public Vertex3d(final float x, final float y, final float z) {
+		super();
+		this.mPosition = new MyVector3f(x, y, z);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @return
+	 */
+	public MyVector3f getPosition() {
+		assert mPosition != null : "Positionsvektor ist null, Kopie kann nicht erstellt werden";
+		return mPosition.clone();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return
+	 */
+	public MyVector3f getPositionPtr() {
+		return mPosition;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mPosition
+	 */
+	public void setPosition(final MyVector3f mPosition) {
+		mPosition.normalizeRange();
+		this.mPosition = mPosition;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public void setX(final float x) {
+		this.mPosition.x = x;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public void setY(final float y) {
+		this.mPosition.y = y;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public void setZ(final float z) {
+		this.mPosition.z = z;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public float getX() {
+		return this.mPosition.x;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public float getY() {
+		return this.mPosition.y;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public float getZ() {
+		return this.mPosition.z;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String toString() {
+		return "Position: " + getPosition();
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public Vertex3d clone() {
+		Vertex3d result = null;
+		try {
+			result = (Vertex3d) super.clone();
+		} catch (CloneNotSupportedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		if (mPosition != null)
+			result.setPosition(getPosition());
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Implementiert einen toleranten Positionsvergleich bei Vertices, um
+	 * Floating-Point-Ungenauigkeiten auszugleichen. Sofern sich die beiden
+	 * Vektoren in jeder Komponente um weniger als die festgelegte Toleranz
+	 * unterscheiden, werden sie als gleich betrachtet.
+	 * 
+	 * @param vector1
+	 *            Eingabevektor 1
+	 * @param vector2
+	 *            Eingabevektor 2
+	 * @return True, falls die Abweichungen in den Komponenten unter der
+	 *         Schwelle liegen, False sonst
+	 */
+	protected boolean comparePositionsWithTolerance(final MyVector3f vector1,
+			final MyVector3f vector2) {
+
+		// simuliere einen Punkt-in-Kugel-Test => wenn der Abstand zwischen den
+		// Punkten unter
+		// einem Grenzwert liegt, befindet sich der Punkt in der Kugel
+
+		final float radius = 0.05f;
+		final MyVector3f differenceVector = new MyVector3f();
+		differenceVector.sub(vector1, vector2);
+
+		final float distance = differenceVector.length();
+		return !(distance > radius);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see java.lang.Object#hashCode()
+	 */
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result
+				+ ((mPosition == null) ? 0 : mPosition.hashCode());
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see java.lang.Object#equals(java.lang.Object)
+	 */
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		Vertex3d other = (Vertex3d) obj;
+		if (mPosition == null) {
+			if (other.mPosition != null)
+				return false;
+		} else if (mPosition.equals(other.mPosition)) {
+			return true;
+		} else
+			return false;
+
+		return true;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Rundet einen uebergebenen Wert mit der uebergebenen Genauigkeit und gibt
+	 * den gerundeten Wert zurueck
+	 * 
+	 * @param input
+	 *            Zu rundendender Wert
+	 * @param accuracy
+	 *            Rundungsgenauigkeit
+	 * @return gerundeter Wert
+	 * 
+	 * 
+	 */
+	public float round(final float input, final float accuracy) {
+
+		float result = input;
+		result *= accuracy;
+		result = Math.round(result);
+		result /= accuracy;
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

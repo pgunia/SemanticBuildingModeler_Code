@@ -1,0 +1,56 @@
+package semantic.city.builder.weightedstraightskeleton.algorithm;
+
+import semantic.city.builder.math.MyVector3f;
+
+
+
+/**
+ * Event-Typ wird ausgeloest, wenn die Sweep-Plane eine bestimmte Hoehe erreicht
+ * @author Patrick Gunia
+ *
+ */
+public class ChangeSlopeEvent extends AbstractEvent {
+
+	/**
+	 * @param mVertex
+	 * @param mSchnittpunkt
+	 * @param mDistance
+	 */
+	public ChangeSlopeEvent(final SkeletonVertex mVertex, final MyVector3f mSchnittpunkt,
+			float mDistance) {
+		super(mVertex, mSchnittpunkt, mDistance);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "ChangeSlopeEvent";
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	/**
+	 * Bei ChangeSlopeEvents muss die globale Distanz auf die aktuelle Iteration umgerechnet werden, da die Hoehe des ChangeSlopeEvents immer absolut ist
+	 */
+	protected void calculateShrinkDistance() {
+		
+		// berechne den Abstand der aktuellen Iterationsebene von der globalen Zielhoehe, an der der Change-Event einsetzen soll
+		float currentHeight = mVertex.getY();
+		mDistance = Math.abs(mDistance) - Math.abs(currentHeight);
+		mShrinkDistance = mDistance;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/* (non-Javadoc)
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		return "ChangeSlopeEvent: Distanz: " + mDistance
+				+ " Shrink-Distanz: " + mShrinkDistance + mLineBreak;
+	}
+	// ------------------------------------------------------------------------------------------
+
+
+}

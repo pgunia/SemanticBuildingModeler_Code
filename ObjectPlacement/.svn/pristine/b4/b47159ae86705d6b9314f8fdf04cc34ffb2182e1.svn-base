@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<objectplacement
+    xmlns="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Objectplacement"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:smcb_ct="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/CommonTypes"
+    xmlns:smcb_op="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Objectplacement"
+    xsi:schemaLocation="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Objectplacement https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Objectplacement/ObjectplacementSchema.xsd">
+        <smcb_op:maxCornerMainComponentDimensionsRatio>0.4</smcb_op:maxCornerMainComponentDimensionsRatio>
+        <smcb_ct:polygonSource>
+            <smcb_ct:modelCategory>Footprint</smcb_ct:modelCategory>
+        </smcb_ct:polygonSource>
+        <smcb_op:placementScalingSubcomponents>
+            <smcb_ct:lowerBorder>0.6</smcb_ct:lowerBorder>
+            <smcb_ct:upperBorder>0.9</smcb_ct:upperBorder>
+        </smcb_op:placementScalingSubcomponents>
+        <smcb_op:placementScalingMaincomponents>
+            <smcb_ct:lowerBorder>0.4</smcb_ct:lowerBorder>
+            <smcb_ct:upperBorder>0.7</smcb_ct:upperBorder>
+        </smcb_op:placementScalingMaincomponents>
+        
+        <smcb_op:minNumberOfFreeBlocks>3</smcb_op:minNumberOfFreeBlocks>
+        <smcb_op:maxNumberOfSubcomponentsPerRay>1</smcb_op:maxNumberOfSubcomponentsPerRay>
+        <smcb_op:minSubcomponentSizeInBlocks>5</smcb_op:minSubcomponentSizeInBlocks>
+        <smcb_op:allowedSubcomponentTypes>
+            <smcb_op:type>RectComponent</smcb_op:type>
+            <smcb_op:type>CylindricComponent</smcb_op:type>
+        </smcb_op:allowedSubcomponentTypes>
+        <smcb_op:maxNumberOfRetriesPerRay>10</smcb_op:maxNumberOfRetriesPerRay>
+        
+        <smcb_op:heightWidthRatioComponents>
+            <smcb_ct:lowerBorder>0.3</smcb_ct:lowerBorder>
+            <smcb_ct:upperBorder>0.95</smcb_ct:upperBorder>
+        </smcb_op:heightWidthRatioComponents>
+        <smcb_op:maxSubMainComponentWidthRatio>0.7</smcb_op:maxSubMainComponentWidthRatio>
+        <smcb_op:minMainToSubcomponentDeviance>0.1</smcb_op:minMainToSubcomponentDeviance>
+        <smcb_op:numberOfIterations>2</smcb_op:numberOfIterations>
+        
+        <smcb_op:placementProbability>
+            <smcb_op:symmetry>0.2</smcb_op:symmetry>
+            <smcb_op:positionSubComponentsOnCorners>0.4</smcb_op:positionSubComponentsOnCorners>
+            <smcb_op:positionCylinders>0.2</smcb_op:positionCylinders>
+            <smcb_op:positionComponentsOnEdge>0.6</smcb_op:positionComponentsOnEdge>
+            <smcb_op:positionOnCenter>0.4</smcb_op:positionOnCenter>
+            <smcb_op:convexHull>0.3</smcb_op:convexHull>
+        </smcb_op:placementProbability>
+</objectplacement>

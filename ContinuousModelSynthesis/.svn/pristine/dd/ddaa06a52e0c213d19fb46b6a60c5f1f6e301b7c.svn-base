@@ -1,0 +1,11 @@
+package modelsynthesis.model;
+
+/**
+ * Enum beschreibt die Position von Faces in Bezug auf Vertices und Edges
+ * @author Patrick Gunia
+ *
+ */
+
+public enum FacePosition {
+	UPPER, LOWER, UPPER_LEFT, LOWER_LEFT, UPPER_RIGHT, LOWER_RIGHT;
+}

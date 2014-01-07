@@ -1,0 +1,112 @@
+package semantic.building.modeler.prototype.algorithm;
+
+import java.util.List;
+
+import org.apache.log4j.Logger;
+
+import semantic.building.modeler.configurationservice.model.enums.Side;
+import semantic.building.modeler.math.MyPolygon;
+import semantic.building.modeler.math.MyVectormath;
+import semantic.building.modeler.math.Ray;
+import semantic.building.modeler.prototype.graphics.complex.AbstractComplex;
+import semantic.building.modeler.prototype.graphics.primitives.AbstractQuad;
+
+//------------------------------------------------------------------------------------------
+
+/**
+ * 
+ * @author Patrick Gunia Klasse dient der Verwaltung eines einzelnen Grundrisses
+ *         eines komplexen Objekts (bsw. eines Cubes).
+ * 
+ */
+public class Footprint {
+
+	/** Logging-Instanz */
+	protected static Logger LOGGER = Logger.getLogger(Footprint.class);
+
+	/** Polygonrepraesentation des berechneten Grundrisses */
+	private MyPolygon mFootprintPoly = null;
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor mit Uebergabe eines komplexen Objekts, aus dem zunaechst
+	 * saemtliche TOP-Quads extrahiert werden, um die Polygone dieser Quads in
+	 * die Berechnung einzubeziehen
+	 * 
+	 * @param parent
+	 *            Komplexes Objekt, dessen TOP-Quad in die Footprint-Berechnung
+	 *            eingeschlossen werden soll
+	 */
+	public Footprint(AbstractComplex parent) {
+		assert parent != null : "Das uebergebene Elternelement ist nicht definiert";
+
+		List<AbstractQuad> topQuads = parent
+				.getAllOutsideQuadsWithDirection(Side.TOP);
+
+		assert topQuads.size() == 1 : "FEHLER: Fuer die komplexe Komponente "
+				+ parent.getID() + " wurden " + topQuads.size()
+				+ " Quads mit Ausrichtung TOP gefunden.";
+
+		mFootprintPoly = new MyPolygon(topQuads.get(0).getQuadVertices());
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor mit Uebergabe eines direkten Polygons, erspart die vorherige
+	 * Extraktion von Quads aus komplexen Eingabeobjekten
+	 * 
+	 * @param poly
+	 *            Polygon, das in die Mergingberechnung einbezogen wird
+	 */
+	public Footprint(MyPolygon poly) {
+		mFootprintPoly = poly;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public List<Ray> getRays() {
+		return mFootprintPoly.getRays();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mFootprintPoly
+	 */
+	public MyPolygon getFootprintPoly() {
+		return mFootprintPoly;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet, ob sich der uebergebene Grundriss mit dem aktuellen
+	 * Grundriss schneidet. Sofern dies der Fall ist, werden die Grundrisse zum
+	 * gleichen Bucket hinzugefuegt.
+	 * 
+	 * @param other
+	 *            Grundriss, der auf Schnitte mit dem aktuellen Grundriss
+	 *            getestet wird
+	 * @return True, falls sich die Grundrisspolygone ueberschneiden, False
+	 *         sonst
+	 */
+
+	public boolean intersects(final Footprint other) {
+		return MyVectormath.getInstance().intersects(this.mFootprintPoly,
+				other.mFootprintPoly);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String toString() {
+		String lineBreak = System.getProperty("line.separator");
+		String message = "Footprint: " + lineBreak;
+		for (int i = 0; i < getRays().size(); i++) {
+			message += "Ray " + i + ": " + getRays().get(i) + lineBreak;
+		}
+		return message;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

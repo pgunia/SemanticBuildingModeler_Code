@@ -1,0 +1,112 @@
+package tesselationModel;
+
+import org.apache.log4j.Logger;
+
+/**
+ * 
+ * @author Patrick Gunia
+ * Wrapper-Klasse fuer OpenGL-Drawing-Type-Enum. Ermoeglicht die Zuweisung von Enum-Werten basierend auf 
+ * den OpenGL-Ints
+ *
+ */
+public class DrawingType {
+
+	/** Logging-Instanz */
+	private static Logger logger = Logger
+			.getLogger("glutesselator.tesselationmodel.drawingtype");
+	
+	public enum DrawingTypeEnum {
+		GL_POINTS, GL_LINES, GL_LINE_STRIP, GL_LINE_LOOP, GL_TRIANGLES, GL_TRIANGLE_STRIP, GL_TRIANGLE_FAN, GL_QUADS, GL_QUAD_STRIP, GL_POLYGON, UNDEFINED, 
+	}
+	
+	/** Instanz der Enumeration fuer die unterschiedlichen OpenGL-DrawingTapes*/
+	private DrawingTypeEnum mCurrentDrawType = DrawingTypeEnum.UNDEFINED;
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Default-Konstruktor tut nichts
+	 */
+	public DrawingType() {
+	
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor bekommt als Uebergabe einen Type-Index und weist basierend auf diesem einen Enumwert
+	 * zur Membervariablen hinzu
+	 * @param type Index, der sich auf einen der Enum-Werte bezieht
+	 */
+	public DrawingType(int type) {
+		setTypeByIndex(type);
+		logger.debug("CURRENT DRAW TYPE: " + mCurrentDrawType);
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mCurrentDrawType
+	 */
+	public DrawingTypeEnum getCurrentDrawType() {
+		return mCurrentDrawType;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mCurrentDrawType the mCurrentDrawType to set
+	 */
+	public void setCurrentDrawType(DrawingTypeEnum mCurrentDrawType) {
+		this.mCurrentDrawType = mCurrentDrawType;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode erlaubt das Setzen von Enum-Werten basierend auf Indices die die einzelnen Enum-Komponenten
+	 * beschreiben. Setzt voraus, dass die Abfolge konstant bleibt.
+	 * @param index Index, fuer den eine Enum-Zuweisung erfolgen soll
+	 */
+	private void setTypeByIndex(int index) {
+		int enumIndex = 0;
+		int maxIndex = DrawingTypeEnum.values().length;
+		for(DrawingTypeEnum drawType: DrawingTypeEnum.values()) {
+			if(enumIndex == index) {
+				mCurrentDrawType = drawType;
+				break;
+			}
+			else {
+				enumIndex++;
+				if(enumIndex > maxIndex) return;
+			}
+		}
+	}
+
+	
+
+	
+
+	// ------------------------------------------------------------------------------------------
+
+	/* (non-Javadoc)
+	 * @see java.lang.Object#equals(java.lang.Object)
+	 */
+	@Override
+	public boolean equals(Object obj) {
+		// beruecksichtige ausschliesslich die Speicheradresse!
+		if (this == obj)
+			return true;
+		return false;
+		
+	}
+	// ------------------------------------------------------------------------------------------
+
+	
+	/* (non-Javadoc)
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		return "DrawingType [mCurrentDrawType=" + mCurrentDrawType + "]";
+	}
+	
+	// ------------------------------------------------------------------------------------------
+}

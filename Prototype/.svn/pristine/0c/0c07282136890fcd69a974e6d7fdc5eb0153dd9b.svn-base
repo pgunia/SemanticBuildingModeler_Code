@@ -1,0 +1,57 @@
+package semantic.building.modeler.prototype.building.footprint;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.log4j.Logger;
+
+import semantic.building.modeler.math.MyPolygon;
+import semantic.building.modeler.prototype.building.footprint.walldescriptor.WallDescriptor;
+
+/**
+ * Klasse fungiert als abstrakte Basisklasse fuer verschiedene Arten von
+ * Grundrissen
+ * 
+ * @author Patrick
+ * 
+ */
+
+abstract public class AbstractFootprint {
+
+	/** Logging-Instanz */
+	protected static Logger LOGGER = Logger.getLogger(AbstractFootprint.class);
+
+	/** Liefert den Bezeichner des Grundrisses */
+	abstract public String getType();
+
+	/**
+	 * Grundrisspolygone => komplexe Grundrisse koennen aus mehreren
+	 * Grundrisspolygonen zusammengesetzt sein
+	 */
+	protected List<MyPolygon> mFootprints = null;
+
+	/**
+	 * Liste mit Connection-Instanzen, die die Beziehungen zwischen den
+	 * Grundrissen modellieren
+	 */
+	protected List<WallDescriptor> mFootprintConnections = null;
+
+	// ------------------------------------------------------------------------------------------
+	public AbstractFootprint() {
+		mFootprints = new ArrayList<MyPolygon>();
+		mFootprintConnections = new ArrayList<WallDescriptor>();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public List<MyPolygon> getFootprints() {
+		return mFootprints;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public List<WallDescriptor> getWallDescriptors() {
+		return mFootprintConnections;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

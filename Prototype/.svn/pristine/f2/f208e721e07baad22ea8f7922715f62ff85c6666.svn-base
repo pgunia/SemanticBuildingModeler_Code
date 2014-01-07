@@ -1,0 +1,7 @@
+package semantic.city.builder.prototype.exporter;
+
+public enum ExportFormat {
+
+	OBJ;
+
+}

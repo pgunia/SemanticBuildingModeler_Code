@@ -1,0 +1,59 @@
+# Typ der ersten positionierten Komponente 
+FirstComponentType = OUTSIDE
+	
+# Maximale Anzahl an Eckpositionierungen: -1 => unbegrenzt 
+CornerCount = 1
+
+# Maximale Anzahl an Anwendungen von Reflex-Eckpunktpositionierungen: -1 => unbegrenzt 
+ReflexCornerCount = 1
+	
+# Maximale Anzahl an Kantenpositionierungen: -1 => unbegrenzt 
+mEdgeCount = -1
+	
+# Maximale Anzahl an Outside-Positionierungen: -1 => unbegrenzt 
+OutsideCount = -1
+	
+# Maximale Anzahl an Inside-Positionierungen: -1 => unbegrenzt 
+InsideCount = -1
+	
+# Sollen Komponenten zufallsbasiert ausgewaehlt werden? 
+UseRandForComponentChoice = true
+	
+# Soll bei mehreren zur Verfuegung stehenden Regeln zufaellig zwischen diesen gewaehlt werden? 
+UseRandForStateChoice = true
+	
+# Soll versucht werden, "geschlossene Strukturen" zu erzeugen, also solche Regeln staerker zu gewichten, die Indoor an Indoor und Outdoor an Outdoor anordnen 
+UseConsistencyConstraint = true
+
+# Soll versucht werden, moeglichst geschlossene Strukturen zu erzeugen => Verwendung der Touched-Components?
+UseRandomGrowth = false
+
+# Sollen bei der Auswahl der Komponenten nur Kanten beruecksichtigt werden?
+UseOnlyRayComponents = false
+	
+# Sollen bei der Auswahl der Komponenten nur Vertices beruecksichtigt werden?
+UseOnlyVertexComponents = false
+
+# Faktor, mit dem die Voteanzahl fuer Corner-States multipliziert wird
+CornerVoteBoost = 4
+	
+# Faktor, mit dem die Voteanzahl fuer ReflexCorner-States multipliziert wird
+ReflexCornerVoteBoost = 5
+
+# Faktor, mit dem die Voteanzahl fuer Edge-States multipliziert wird
+EdgeVoteBoost = 2
+
+# Faktor, mit dem die Voteanzahl fuer Outside-States multipliziert wird
+OutsideVoteBoost = 2
+
+# Faktor, mit dem die Voteanzahl fuer Inside-States multipliziert wird
+InsideVoteBoost = 1
+
+# Anzahl paralleler Strahlen, die pro Richtung im Eingabepolygon erstellt werden
+NumberOfParallelRays = 5
+	
+# Abstand der parallelen Kanten bei der Berechnung
+RuleComputationParallellRaysDistance = 71.04
+
+# Abstand der parallelen Kanten zueinander, am besten ungerade Werte nehmen, dann sind geteilte Strahlen unwahrscheinlicher
+ParallelRaysDistance = 57.13

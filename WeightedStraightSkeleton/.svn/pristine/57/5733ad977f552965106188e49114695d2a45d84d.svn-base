@@ -1,0 +1,136 @@
+package semantic.city.builder.weightedstraightskeleton.result;
+
+import semantic.city.builder.math.MyVector2f;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.Ray;
+import semantic.city.builder.math.Vertex3d;
+
+
+/**
+ * 
+ * @author Patrick Gunia
+ * 
+ *         Ein ResultTriangle ist ein dreieckiges Polygon, das ein Face eines
+ *         Result-Objekts speichert.
+ * 
+ */
+
+public class ResultTriangle extends AbstractResultElement {
+
+	private float mDeltaX = -1;
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public int getNumberOfPoints() {
+		return 3;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+
+		return "ResultTriangle";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	protected void doComputations() {
+
+		// berechne Breite und Hoehe des Dreiecks
+		// Grundseite ist definiert durch die Punkte mit den Koordinaten 0 und 1
+		Vertex3d vert0 = mPoints.get(0);
+		Vertex3d vert1 = mPoints.get(1);
+		Vertex3d vert2 = mPoints.get(2);
+
+		// Grundkante
+		MyVector3f direction = new MyVector3f();
+		direction.sub(vert1.getPosition(), vert0.getPosition());
+		mWidthLowerEdge = direction.length();
+
+		Ray baseEdge = new Ray(vert0.getPosition(), direction);
+		mHeight = mMathHelper.calculatePointEdgeDistance(vert2.getPosition(),
+				baseEdge);
+
+		MyVector3f secondRay = new MyVector3f();
+		secondRay.sub(vert2.getPosition(), vert0.getPosition());
+
+		// berechne die Face-Normale
+		MyVector3f faceNormal = new MyVector3f();
+		faceNormal.cross(direction, secondRay);
+
+		// rotiere nun die Grundkante um den Normalenvektor
+		MyVector3f rotatedBaseEdge = new MyVector3f();
+		rotatedBaseEdge = mMathHelper.calculateOrthogonalVectorWithSamePlane(
+				direction, faceNormal);
+
+		// erzeuge einen Strahl vom obersten punkt mit der berechneten Richtung
+		Ray orthogonalRay = new Ray(vert2.getPosition(), rotatedBaseEdge);
+
+		MyVector3f schnittpunkt = mMathHelper
+				.calculateRay2RayIntersectionApproximation(orthogonalRay,
+						baseEdge);
+		assert schnittpunkt != null : "Es konnte kein Schnittpunkt berechnet werden";
+
+		// berechne nun den Abstand des Vertex mit Index 1 vom berechneten
+		// Schnittpunkt
+		mDeltaX = mMathHelper.calculatePointPointDistance(schnittpunkt,
+				vert1.getPosition());
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	protected void createTextureCoords(float width, float height) {
+
+		float widthScaleFactor, heightScaleFactor, widthProportion, heightProportion, scaleFactor = 1;
+		float offset = 0;
+
+		AbstractResultElement lowerNeighbour = getLowerNeighbour();
+
+		// teste, ob ein linker Nachbar existiert, wenn ja, verwende dessen
+		// rechten Offset in der u-Koordinatenachse
+		if (hasLeftNeighbour())
+			offset = getLeftNeighbour().getTextureOffsetMaxU();
+		else if (lowerNeighbour != null)
+			offset = lowerNeighbour.getTextureOffset();
+
+		// berechne die Proportionen zwischen Textur und Element
+		// Verhaeltnis von Elementausdehnungen zu Texturausdehnungen
+		widthScaleFactor = mWidthLowerEdge / width;
+		heightScaleFactor = mHeight / height;
+
+		mTextureCoords.put(0, new MyVector2f(widthScaleFactor + offset,
+				heightScaleFactor));
+
+		mTextureCoords.put(1, new MyVector2f(offset, heightScaleFactor));
+
+		mTextureCoords.put(2, new MyVector2f(mDeltaX / width + offset, 0.0f));
+
+		// ist unnoetig, da ein Dreieck keinen oberen Nachbarn haben kann
+		// der Vollstaendigkeit halber
+		mTextureOffsetULeft = offset;
+
+		// aber ein rechter Nachbar ist durchaus moeglich
+		mTextureOffsetURight = widthScaleFactor + offset;
+
+		// Verhaeltnis von Texturausdehnungen zu Elementausdehnungen mit
+		// Beruecksichtigung des Offsets
+		widthProportion = width / (mWidthLowerEdge + offset * width);
+		heightProportion = height / mHeight;
+
+		if (widthProportion < heightProportion)
+			scaleFactor = widthProportion;
+		else
+			scaleFactor = heightProportion;
+
+		// update die globalen Scalingwerte
+		updateMinScaleFactor(scaleFactor);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

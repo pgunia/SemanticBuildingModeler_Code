@@ -1,0 +1,133 @@
+package semantic.building.modeler.prototype.graphics.complex;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import processing.core.PApplet;
+import semantic.building.modeler.configurationservice.model.enums.Side;
+import semantic.building.modeler.math.Axis;
+import semantic.building.modeler.math.MyPolygon;
+import semantic.building.modeler.math.Vertex3d;
+import semantic.building.modeler.prototype.enums.subdivisionType;
+import semantic.building.modeler.prototype.graphics.interfaces.iGraphicComplex;
+
+public class Cylinder extends AbstractComplex {
+
+	/** Radius des Zylinders */
+	private Float mRadius = null;
+
+	/**
+	 * Anzahl an Segmenten, aus wievielen Liniensegmenten wird der "Kreis"
+	 * angenaehert
+	 */
+	private Integer mNumberOfSegments = null;
+
+	/** Winkel eines einzelnen Segments am Mittelpunkt */
+	private double mSliceAngle;
+
+	// ------------------------------------------------------------------------------------------
+
+	public Cylinder(PApplet parent, int numberOfSegments, Float height,
+			Float radius) {
+		super(parent, height);
+
+		mRadius = radius;
+		mNumberOfSegments = numberOfSegments;
+
+		// berechne den Winkel eines einzelnen Segments ueber die gesetzte
+		// Anzahl an Segmenten
+		mSliceAngle = 360.0f / numberOfSegments;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public void create() {
+
+		List<Vertex3d> footprintVerts = new ArrayList<Vertex3d>(
+				mNumberOfSegments);
+
+		float x, z;
+		Vertex3d currentVertex = null;
+
+		// erzeuge den Footprint des Zylinders
+		// unteren Kreis erstellen
+		for (int i = 0; i < mNumberOfSegments; i++) {
+			x = (float) (mRadius * Math.cos(Math.toRadians(i * mSliceAngle)));
+			z = (float) (mRadius * Math.sin(Math.toRadians(i * mSliceAngle)));
+
+			currentVertex = new Vertex3d(x, 0.0f, z);
+			footprintVerts.add(currentVertex);
+		}
+
+		mFootprint = new MyPolygon(footprintVerts);
+		extrudeFootprint();
+
+		// alle Berechnungen durchfuehren
+		finalizeCreation();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void extrude(Side whichFace, Axis extrudeAxis, float extrudeAmount) {
+		// TODO Auto-generated method stub
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void subdivideQuad(Side whichFace, subdivisionType type,
+			float subdivisionFactor) {
+		// TODO Auto-generated method stub
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public iGraphicComplex subdivide(subdivisionType type,
+			float subdivisionFactor) {
+		// TODO Auto-generated method stub
+		return null;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public String getType() {
+		return "cylinder";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mRadius
+	 */
+	public Float getRadius() {
+		return mRadius;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mNumberOfSegments
+	 */
+	public Integer getNumberOfSegments() {
+		return mNumberOfSegments;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public Float getHeight() {
+		return mHeight;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public AbstractComplex cloneConcreteComponent() {
+		return new Cylinder(mParent, mNumberOfSegments, mHeight, mRadius);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

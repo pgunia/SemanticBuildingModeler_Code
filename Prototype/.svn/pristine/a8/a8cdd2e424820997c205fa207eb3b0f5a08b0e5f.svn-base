@@ -1,0 +1,611 @@
+package semantic.city.builder.prototype.graphics.complex;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+import processing.core.PApplet;
+import semantic.city.builder.configurationservice.model.enums.Side;
+import semantic.city.builder.math.MyPolygon;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.MyVectormath;
+import semantic.city.builder.math.Ray;
+import semantic.city.builder.math.Vertex3d;
+import semantic.city.builder.prototype.building.footprint.walldescriptor.DoorDescriptor;
+import semantic.city.builder.prototype.building.footprint.walldescriptor.OpenWallConnectionDescriptor;
+import semantic.city.builder.prototype.building.footprint.walldescriptor.OpenWallOutsideDescriptor;
+import semantic.city.builder.prototype.building.footprint.walldescriptor.WallDescriptor;
+import semantic.city.builder.prototype.enums.FootprintConnectionType;
+import semantic.city.builder.prototype.graphics.primitives.AbstractQuad;
+import semantic.city.builder.prototype.graphics.primitives.Quad;
+import semantic.city.builder.prototype.service.ObjectPositioningService;
+import semantic.city.builder.prototype.service.PositionConfig;
+
+/**
+ * Klasse dient der Verwaltung von Grundrissstrukturen, die nicht durch konvexe
+ * Polygone beschrieben werden koennen. Solche Strukturen werden zur
+ * Modellierung von Innenraeumen benoetigt. Da solche Strukturen nicht durch
+ * geschlossene Linienzuege beschrieben werden koennen, werden diese hier durch
+ * die Kombination einfacher Grundformpolygone (bsw. Rechtecke) definiert,
+ * zwischen denen unterschiedliche Arten von Verbindungen existieren koennen.
+ * Instanzen dieser Klasse besitzen weder Decke noch Boden, da sie im Inneren
+ * eines regulaeren Stockwerks erzeugt werden.
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public class IndoorFloorComplex extends AbstractComplex {
+
+	/** Liste Polygonen, die die einzelnen Teile des Grundrisses beschreiben */
+	protected List<MyPolygon> mFootprintComponents = null;
+
+	/**
+	 * Liste mit Instanzen der Connections-Klasse, beschreiben, wie die
+	 * einzelnen Komponenten miteinander in Beziehung stehen
+	 */
+	protected List<WallDescriptor> mFootprintConnections = null;
+
+	/**
+	 * IndoorFloorComplex-Instanzen koennen komplexe Objekte enthalten, bsw.
+	 * Fenster etc. Sobald eine solche Komponente aber einem Stockwerk
+	 * hinzugefuegt wird, werden die Komponenten automatisch dem Gebaeude
+	 * hinzugefuegt und der Buffer wird geleert
+	 */
+	private List<AbstractComplex> mComponents = null;
+
+	/**
+	 * Konstruktor
+	 * 
+	 * @param parentApplet
+	 *            PApplet-Instanz fuer Rendering
+	 * @param height
+	 *            Hoehe der Komponente
+	 * @param footprintComponents
+	 *            Liste mit Polygonen, die die einzelnen Komponenten des
+	 *            komplexen Grundrisses beschreiben
+	 * @param footprintConnections
+	 *            Liste mit den Verbindungsdatenstrukturen, die die Art der
+	 *            Zusammenhaenge zwischen den einzelnen Polygonen beschreiben
+	 */
+	public IndoorFloorComplex(PApplet parentApplet, Float height,
+			List<MyPolygon> footprintComponents,
+			List<WallDescriptor> footprintConnections) {
+		super(parentApplet, height);
+		mFootprintComponents = footprintComponents;
+		mFootprintConnections = footprintConnections;
+		mComponents = new ArrayList<AbstractComplex>();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "indoorfloor";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	/**
+	 * Methode erzeugt die Geometrie, indem zunaechst saemtliche Grundrisspolygone extrudiert werden. Die Standard-Extrusionsmethode wird dabei fuer jede Komponente einmal aufgerufen, indem der Footprint-Member-Variable 
+	 * bei jedem Durchlauf eine andere Komponente zugewiesen wird.
+	 */
+	public void create() {
+		translateFootprintsToPosition();
+
+		for (int i = 0; i < mFootprintComponents.size(); i++) {
+			mFootprint = mFootprintComponents.get(i);
+			extrudeFootprint();
+		}
+
+		// entferne Boden- und Deckenquad
+		AbstractQuad currentQuad = null;
+		Iterator<AbstractQuad> quadIter = mOutdoorQuads.iterator();
+		while (quadIter.hasNext()) {
+			currentQuad = quadIter.next();
+			if (currentQuad.getDirection().equals(Side.TOP)
+					|| currentQuad.getDirection().equals(Side.BOTTOM))
+				quadIter.remove();
+		}
+
+		// alle Berechnungen durchfuehren
+		finalizeCreation();
+
+		correctDirections();
+		processWallDescriptions();
+
+	}
+
+	// -----------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft alle Quad-Elemente des komplexen Objekts und ruft
+	 * deren Update-Methoden auf. Dies fuehrt zu einer Kette von Updates, da die
+	 * Quads selber wiederum weitere Updates initiieren etc.
+	 */
+	public void update() {
+
+		// Update der BB
+		if (mBB != null)
+			mBB.update();
+
+		// Update der Quads
+		for (int i = 0; i < mOutdoorQuads.size(); i++)
+			mOutdoorQuads.get(i).update();
+
+		// Footprints aktualisieren, Ebene, Rays etc.
+		for (int i = 0; i < mFootprintComponents.size(); i++)
+			mFootprintComponents.get(i).update();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft die erstellten Quads und aktualisiert die
+	 * Ausrichtungen dahingehend, dass alle Ausrichtung das Postfix "INDOOR"
+	 * erhalten, um sie von den Aussenwaenden abgrenzen zu koennen
+	 */
+	private void correctDirections() {
+
+		AbstractQuad currentQuad = null;
+		Side currentSide = null;
+		for (int i = 0; i < mOutdoorQuads.size(); i++) {
+			currentQuad = mOutdoorQuads.get(i);
+			currentSide = currentQuad.getDirection();
+			switch (currentSide) {
+			case TOP:
+				currentSide = Side.TOP_INDOOR;
+				break;
+			case BOTTOM:
+				currentSide = Side.BOTTOM_INDOOR;
+				break;
+			case LEFT:
+				currentSide = Side.LEFT_INDOOR;
+				break;
+			case RIGHT:
+				currentSide = Side.RIGHT_INDOOR;
+				break;
+			case FRONT:
+				currentSide = Side.FRONT_INDOOR;
+				break;
+			case BACK:
+				currentSide = Side.BACK_INDOOR;
+				break;
+			default:
+				break;
+			}
+			currentQuad.setDirection(currentSide);
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	protected AbstractComplex cloneConcreteComponent() {
+		IndoorFloorComplex newObject = new IndoorFloorComplex(mParent, mHeight,
+				mFootprintComponents, mFootprintConnections);
+		return newObject;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode verarbeitet die unterschiedlichen Arten von Verbindungen, die
+	 * zwischen Grundrisspolygonen vorliegen koennen
+	 */
+	private void processWallDescriptions() {
+
+		FootprintConnectionType connectionType = null;
+		WallDescriptor currentWallDescriptor = null;
+		for (int i = 0; i < mFootprintConnections.size(); i++) {
+			currentWallDescriptor = mFootprintConnections.get(i);
+			connectionType = currentWallDescriptor.getConnectionType();
+			// DOOR, DOOR_OUTSIDE, WALL_OPEN, WALL_OUTSIDE;
+			switch (connectionType) {
+			case WALL_OUTSIDE:
+				processOpenWallOutsideDescriptor((OpenWallOutsideDescriptor) currentWallDescriptor);
+				break;
+			case WALL_OPEN:
+				processOpenWallConnectionDescriptor((OpenWallConnectionDescriptor) currentWallDescriptor);
+				break;
+			case DOOR:
+				processDoorDescriptor((DoorDescriptor) currentWallDescriptor);
+				break;
+			}
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode entfernt das Quad, das durch die Kante und das Polygon im
+	 * Descriptor beschrieben wird
+	 * 
+	 * @param descriptor
+	 *            Descriptor-Instanz, die festlegt, welche Wand wie entfernt
+	 *            werden soll
+	 */
+	private void processOpenWallOutsideDescriptor(
+			OpenWallOutsideDescriptor descriptor) {
+
+		// Kante im Eingabepolygon bestimmen
+		int edgeIndex = descriptor.getEdgeIndex();
+		MyPolygon poly = descriptor.getFootprint();
+
+		// Zielquad ueber Verts ermitteln
+		List<Vertex3d> edgeVerts = getEdgeVertsFromPoly(poly, edgeIndex);
+		AbstractQuad quad = getQuadByVertices(edgeVerts);
+
+		// und loeschen => damit hat man eine offene Wand innerhalb des
+		// Gebaeudes erzeugt
+		quad.destroy();
+		mOutdoorQuads.remove(quad);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erzeugt eine offene Wandverbindungen zwischen den beiden
+	 * Polygonen, die durch den uebergebenen Descriptor beschrieben werden
+	 * 
+	 * @param descriptor
+	 *            Descriptor-Instanz, die angibt, welche Kanten aus den beiden
+	 *            Polygonen durch eine offene Wand miteinander verbunden werden
+	 *            sollen
+	 */
+	private void processOpenWallConnectionDescriptor(
+			OpenWallConnectionDescriptor descriptor) {
+
+		// fuehre die Clippingberechnungen durch, die entweder beide Quads
+		// loescht oder gegeneinander beschneidet
+		clipQuads(descriptor);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet die Umsetzung von Door-Connections zwischen
+	 * angrenzenden Polygonzuegen => dabei wird eine Wand der Polygone entfernt,
+	 * in die andere wird ein Portal eingesetzt
+	 * 
+	 * @param descriptor
+	 *            Beschreibungsinstanz fuer die Art der Tuerintegration
+	 */
+	private void processDoorDescriptor(final DoorDescriptor descriptor) {
+
+		// da es sich um einen DoorDescriptor handelt, wird nur das zweite Quad
+		// geloescht bzw. durch das Hinzufuegen eines Loches beschnitten
+		clipQuads(descriptor);
+
+		// positioniere nun eine Tuer innerhalb des ersten Quads
+		// ermittle zunaechst das Zielquad
+		AbstractQuad quad = null;
+		final MyPolygon poly1 = descriptor.getFootprint1();
+		int edgeIndex1 = descriptor.getEdgeIndex1();
+
+		final List<Vertex3d> edgeVerts1 = getEdgeVertsFromPoly(poly1,
+				edgeIndex1);
+		assert edgeVerts1.size() == 2 : "FEHLER: Es wurden "
+				+ edgeVerts1.size() + " Vertices fuer die Kante extrahiert.";
+		quad = getQuadByVertices(edgeVerts1);
+		assert quad != null : "FEHLER: Verwendetes Quad ist null!";
+
+		PositionConfig posConfig = descriptor.getPosConf();
+		ObjectPositioningService.getInstance().addDoor(this, quad, posConfig);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode wird verwendet, um Quads gegeneinander zu beschneiden. Dabei
+	 * bedingt die Art des Descriptors, ob beide Quads beschnitten oder
+	 * geloescht werden oder nur das jeweils zweite. Sind beide Quads identisch,
+	 * werden sie (oder es) einfach geloescht. Ansonsten wird die Schnittmenge
+	 * beider Quads berechnet und als Loch bei beiden (einem) hinzugefuegt.
+	 * 
+	 * @param descriptor
+	 *            Beschreibungsobjekt der Verbindung, die durch die Methode
+	 *            umgesetzt werden soll
+	 */
+	private void clipQuads(OpenWallConnectionDescriptor descriptor) {
+
+		boolean processDoor = false;
+		if (descriptor instanceof DoorDescriptor)
+			processDoor = true;
+
+		// ermittle zunaechst beide Quads anhand des Descriptors
+		AbstractQuad quad1 = null, quad2 = null;
+		MyPolygon poly1 = descriptor.getFootprint1();
+		MyPolygon poly2 = descriptor.getFootprint2();
+		int edgeIndex1 = descriptor.getEdgeIndex1();
+		int edgeIndex2 = descriptor.getEdgeIndex2();
+
+		List<Vertex3d> edgeVerts1 = getEdgeVertsFromPoly(poly1, edgeIndex1);
+		quad1 = getQuadByVertices(edgeVerts1);
+		assert quad1 != null : "FEHLER: Quad1 konnte nicht identifiziert werden!";
+
+		List<Vertex3d> edgeVerts2 = getEdgeVertsFromPoly(poly2, edgeIndex2);
+		quad2 = getQuadByVertices(edgeVerts2);
+		assert quad2 != null : "FEHLER: Quad2 konnte nicht identifiziert werden!";
+
+		// hole die Quadvertices
+		List<Vertex3d> quadVerts1 = quad1.getQuadVertices();
+		List<Vertex3d> quadVerts2 = quad2.getQuadVertices();
+
+		// wenn die Quadbuffer identisch sind, so loescht man die Quads
+		// vollstaendig
+		boolean isIdentical = true;
+
+		// simpler Test => unterschiedliche Anzahl == unterschiedliche Quads
+		if (quadVerts1.size() != quadVerts2.size())
+			isIdentical = false;
+		else {
+
+			// sobald ein Vertex gefunden wird, das nicht in beiden Buffern
+			// vorkommt, breche ab
+			for (int i = 0; i < quadVerts1.size(); i++) {
+
+				if (!quadVerts2.contains(quadVerts1.get(i))) {
+					isIdentical = false;
+					break;
+				}
+			}
+		}
+
+		// wenn die Quads identisch sind, loesche beide Quads und beende die
+		// Berechnung
+		if (isIdentical) {
+			// wenn eine Door-Connection bearbeitet wird, dann loesche nur eines
+			// der beiden Quads
+			if (!processDoor) {
+				quad1.destroy();
+				mOutdoorQuads.remove(quad1);
+			}
+
+			quad2.destroy();
+			mOutdoorQuads.remove(quad2);
+		}
+		// sonst beschneide die Quads wechselseitig, der GLUTesselator berechnet
+		// dann die erforderliche Tesselation
+		// die entstehenden Loecher sind bei beiden Quads identisch, ermittelt
+		// werden sie ueber die Grundkante
+		else {
+			MyVectormath mathHelper = MyVectormath.getInstance();
+
+			// bestimme das hoehere der beiden Quads
+			float quadHeight1 = mathHelper.calculateQuadHeight(quadVerts1);
+			float quadHeight2 = mathHelper.calculateQuadHeight(quadVerts2);
+
+			AbstractQuad relevantQuad = null;
+			List<Vertex3d> relevantEdgeVerts = null;
+
+			// verwende das Quad mit der kleineren Hoehe
+			if (quadHeight1 <= quadHeight2) {
+				relevantEdgeVerts = edgeVerts1;
+				relevantQuad = quad1;
+			} else {
+				relevantEdgeVerts = edgeVerts2;
+				relevantQuad = quad2;
+			}
+
+			// bestimme den Verschiebungsvektor in Richtung der oberen Quadkante
+			// (wird benoetigt, falls man Quads unterschiedlicher Hoehe
+			// verwaltet)
+			List<Vertex3d> relevantQuadVerts = relevantQuad.getQuadVertices();
+
+			// hole den Index des ersten Vertex auf der kante
+			int vertIndex = relevantQuadVerts.indexOf(relevantEdgeVerts.get(0));
+
+			// nehme den Vorgaenger dieses Vertex
+			int prevIndex;
+			if (vertIndex > 0)
+				prevIndex = vertIndex - 1;
+			else
+				prevIndex = quadVerts1.size() - 1;
+
+			MyVector3f quadHeightDirection = new MyVector3f();
+			// Steigungsvektor des kleineren Quads
+			quadHeightDirection.sub(relevantQuadVerts.get(prevIndex)
+					.getPositionPtr(), relevantQuadVerts.get(vertIndex)
+					.getPositionPtr());
+
+			List<Vertex3d> resultVerts = new ArrayList<Vertex3d>(2);
+			// verwende die EdgeVerts der ersten Kante und teste, ob sie auf der
+			// zweiten Kante liegen
+			Ray edge2 = new Ray(edgeVerts2.get(0), edgeVerts2.get(1));
+			for (int i = 0; i < edgeVerts1.size(); i++) {
+				if (mathHelper.isPointOnRay(edgeVerts1.get(i).getPositionPtr(),
+						edge2)
+						&& mathHelper.isPointOnLineSegment(edgeVerts1.get(i)
+								.getPositionPtr(), edge2)) {
+					resultVerts.add(edgeVerts1.get(i));
+				}
+			}
+
+			// wenn bereits hier 2 Punkte im Buffer liegen, dann enthaelt das 1.
+			// Quad das 2. vollstaendig
+			// sosnt fuehre die gleiche Berechnung in Bezug auf das 2. Quad
+			// durch
+			if (!(resultVerts.size() < 2)) {
+				Ray edge1 = new Ray(edgeVerts1.get(0), edgeVerts1.get(1));
+				for (int i = 0; i < edgeVerts2.size(); i++) {
+					if (mathHelper.isPointOnRay(edgeVerts2.get(i)
+							.getPositionPtr(), edge1)
+							&& mathHelper.isPointOnLineSegment(edgeVerts2
+									.get(i).getPositionPtr(), edge1)) {
+						resultVerts.add(edgeVerts2.get(i));
+					}
+				}
+			}
+			assert resultVerts.size() == 2 : "FEHLER: Es wurden "
+					+ resultVerts.size() + " Vertices zum Buffer hinzugefuegt!";
+
+			// erzeuge neue Verts in der Verschiebungshoehe
+			// 1. Vertex auf der oberen Kante
+			MyVector3f newVertPosition = new MyVector3f();
+			newVertPosition.add(resultVerts.get(1).getPositionPtr(),
+					quadHeightDirection);
+			Vertex3d newVert = new Vertex3d(newVertPosition);
+			int vertIndexNewVert = mVertices.indexOf(newVert);
+			if (vertIndexNewVert != -1)
+				newVert = mVertices.get(vertIndexNewVert);
+			else
+				mVertices.add(newVert);
+			resultVerts.add(newVert);
+
+			// 2. Vertex auf der oberen Kante
+			newVertPosition = new MyVector3f();
+			newVertPosition.add(resultVerts.get(0).getPositionPtr(),
+					quadHeightDirection);
+			newVert = new Vertex3d(newVertPosition);
+			vertIndexNewVert = mVertices.indexOf(newVert);
+			if (vertIndexNewVert != -1)
+				newVert = mVertices.get(vertIndexNewVert);
+			else
+				mVertices.add(newVert);
+			resultVerts.add(newVert);
+
+			// erzeuge ein Quad, das als Loch fungiert
+			Integer[] indices = new Integer[resultVerts.size()];
+			for (int i = 0; i < resultVerts.size(); i++)
+				indices[i] = mVertices.indexOf(resultVerts.get(i));
+
+			// erzeuge ein "Loch-Quad" fuer die erzeugten Indices fuer das erste
+			// Quad, allerdings nur dann, wenn keine Door-Connections
+			// verarbeitet werden => in diesem Fall fuegt man das Loch nur zum
+			// 2. Quad hinzu
+			Quad hole = null;
+			if (!processDoor) {
+				hole = new Quad();
+				hole.setComplexParent(this);
+				hole.setDirection(quad1.getDirection());
+				hole.setIndices(indices);
+				quad1.addHole(hole);
+				quad1.tesselate();
+			}
+
+			// und das gleiche noch mal fuer das andere Quad
+			hole = new Quad();
+			hole.setComplexParent(this);
+			hole.setDirection(quad2.getDirection());
+			hole.setIndices(indices);
+			quad2.addHole(hole);
+			quad2.tesselate();
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode holt die Vertices aus dem Polygon, die die Kante bilden, die
+	 * durch den EdgeIndex beschrieben wird
+	 * 
+	 * @param poly
+	 *            Polygon, aus dem die Vertices extrahiert werden sollen
+	 * @param edgeIndex
+	 *            Index der Kante, die geholt werden soll
+	 * @return Liste mit den beiden Vertices, die die Zielkante beschreiben
+	 */
+	private List<Vertex3d> getEdgeVertsFromPoly(MyPolygon poly, int edgeIndex) {
+		assert edgeIndex >= 0 && edgeIndex < poly.getVertices().size() : "FEHLER: Ungueltiger Kantenindex: "
+				+ edgeIndex + "!";
+		List<Vertex3d> result = new ArrayList<Vertex3d>(2);
+		List<Vertex3d> polyPoints = poly.getVertices();
+
+		// Indices beginnen wie die Punkte bei 0
+		result.add(polyPoints.get(edgeIndex));
+
+		// Ueberlauf auf Startkante
+		if (edgeIndex < polyPoints.size() - 1)
+			result.add(polyPoints.get(edgeIndex + 1));
+		else
+			result.add(polyPoints.get(0));
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode verschiebt die Vertices aller Grundrisskomponenten an die
+	 * uebergebene Zielposition
+	 */
+	private void translateFootprintsToPosition() {
+
+		List<Vertex3d> vertices = null;
+		MyPolygon poly = null;
+		for (int i = 0; i < mFootprintComponents.size(); i++) {
+			poly = mFootprintComponents.get(i);
+			poly.translate(mPosition);
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mFootprintComponents
+	 */
+	public List<MyPolygon> getFootprintComponents() {
+		return mFootprintComponents;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Fuegt eine komplexe Komponente zum Buffer des Objekts hinzu, sofern
+	 * dieses bereits zu einem Composite-Objekt geadded ist, wird die Komponente
+	 * direkt zum darueberliegenden Parent-Objekt weitergeleitet, sonst wird sie
+	 * gebuffert und spaeter weitergereicht
+	 * 
+	 * @param component
+	 *            Komponente,
+	 */
+	public void addComponent(AbstractComplex component) {
+		if (mComplexParent != null
+				&& mComplexParent instanceof CompositeComplex) {
+			CompositeComplex complex = (CompositeComplex) mComplexParent;
+			complex.addComplex(component);
+		} else {
+			if (!mComponents.contains(component))
+				mComponents.add(component);
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Liefert alle gebufferten Komponenten des Objekts
+	 * 
+	 * @return Liste mit gebufferten, komplexen Objekten
+	 */
+	public List<AbstractComplex> getComponents() {
+		return mComponents;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Leert den Komponentenbuffer des Objekts
+	 */
+	public void clearComponentBuffer() {
+		mComponents.clear();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode verschiebt alle Vertices relativ zu ihrer Ausgangsposition an die
+	 * uebergebene Position => es handelt sich also um eine
+	 * Translationsberechnung in Bezug auf den Start und nicht in Bezug auf
+	 * absolute Koordinaten (sprich: die uebergebene Position ist nur dann die
+	 * tatsaechliche Endposition, wenn sich das Objekt vorher im Ursprung
+	 * befand)
+	 * 
+	 * @param mPosition
+	 *            Translationsvektor, ueber den die Vertices verschoben werden
+	 */
+	public void translate(MyVector3f mPosition) {
+
+		// verwende die Standardtranslation fuer das IndoorFloor-Objekt
+		super.translate(mPosition);
+
+		// und verschiebe anschliessend evtl. vorhandene Komponenten
+		for (int i = 0; i < mComponents.size(); i++)
+			mComponents.get(i).translate(mPosition);
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

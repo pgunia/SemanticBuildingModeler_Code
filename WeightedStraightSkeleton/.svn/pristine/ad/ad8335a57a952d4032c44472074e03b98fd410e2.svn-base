@@ -1,0 +1,249 @@
+package skeleton.controller;
+
+import java.util.Date;
+import java.util.Iterator;
+import java.util.List;
+
+import math.MyVector3f;
+import math.Ray;
+import math.Vertex3d;
+
+import org.apache.log4j.Logger;
+
+import skeleton.algorithm.RoofDescriptor;
+import skeleton.algorithm.SkeletonPolygon;
+import skeleton.algorithm.StraightSkeleton;
+import skeleton.algorithm.iStraightSkeletonEvent;
+import skeleton.result.ResultFace;
+import skeleton.result.SkeletonResultComplex;
+
+/**
+ * 
+ * @author Patrick Gunia Controller-Klasse fuer die Berechnung und das Zeichnen
+ *         eines Straight-Skeleton basierend auf einer Menge von
+ *         Eingabevertices. Inputs von Maus und Tastatur werden durch die
+ *         Parent-Klasse an diese Klasse weitergeleitet und hier verarbeitet.
+ * 
+ * 
+ */
+public class StraightSkeletonController {
+
+	/** Logger */
+	protected static Logger logger = Logger
+			.getLogger("weightedstraightskeleton.skeletoncontroller.straightskeletoncontroller");
+
+	/** Instanz des eigentlichen Algorithmus */
+	private transient StraightSkeleton mAlgorithmus = null;
+
+	/** Liste enthaelt die Eingabevertices, fuer die das Verfahren berechnet wird */
+	private transient List<Vertex3d> mInputVertices = null;
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor, bekommt als Uebergabe eine Referenz auf das PApplet, in dem
+	 * gezeichnet wird, sowie eine Menge von Input-Vertices. Fuehrt sowohl die
+	 * Initialisierungen durch und startet anschliessend die Berechnung der
+	 * Strukturen
+	 * 
+	 * @param config
+	 *            Beschreibungsinstanz fuer die Erzeugung eines Daches. Enthaelt
+	 *            Vertices und Gewichte im Uhrzeigersinn definiert, sowie
+	 *            weitere berechnungsrelevante Daten fuer die SS-Berechnung
+	 * @throws Exception
+	 */
+	public StraightSkeletonController(final RoofDescriptor config)
+			throws Exception {
+		
+		compute(config);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode ruft die Berechnungsroutinen der Algorithmenstruktur auf.
+	 * Anschliessend holt sie die Ergebnisse zurueck, um diese darzustellen.
+	 * Ausserdem gibt sie Informationen ueber den Berechnungsablauf aus.
+	 * 
+	 * @param config
+	 *            Konfigurationsobjekt, das die alle erforderlichen Parameter
+	 *            zur Dachkonstruktion enthaelt
+	 * @throws Exception
+	 */
+	private void compute(final RoofDescriptor config) throws Exception {
+		
+		mInputVertices = config.getVertices();
+		mAlgorithmus = new StraightSkeleton();
+
+		// stelle die notwendige Berechnungszeit fest
+		Date currentTime = new Date();
+		long current = currentTime.getTime();
+		// wenn Exceptions auftreten, breche ab!
+		try {
+			mAlgorithmus.process(config.getVertices(), config.getEdgeWeights());
+		} catch (AssertionError e) {
+			throw e;
+		} catch (Exception e) {
+			throw e;
+		}
+
+		currentTime = new Date();
+		long currentEnd = currentTime.getTime();
+		long result = currentEnd - current;
+
+		List<List<SkeletonPolygon>> polygons = mAlgorithmus.getAllPolygons();
+		StringBuffer output = new StringBuffer("");
+		String lineBreak = System.getProperty("line.separator");
+		output.append("-----------------------------------------------------------------------"
+				+ lineBreak);
+		output.append("Struktur der Schrumpfungshierarchie:" + lineBreak);
+		for (int i = 0; i < polygons.size(); i++) {
+			output.append("Polygon-Level " + i + " besteht aus "
+					+ polygons.get(i).size() + " Polygonen" + lineBreak);
+		}
+
+		output.append("-----------------------------------------------------------------------");
+		logger.info(output);
+
+		// gib alle Events im Buffer aus:
+		Iterator<iStraightSkeletonEvent> eventIter = mAlgorithmus.getEvents()
+				.iterator();
+
+		int number = 0;
+		output = new StringBuffer();
+		output.append("-----------------------------------------------------------------------"
+				+ lineBreak);
+
+		output.append("Insgesamt verarbeitete Events: "
+				+ mAlgorithmus.getEvents().size() + lineBreak);
+		while (eventIter.hasNext()) {
+			output.append(number + ": " + eventIter.next().toString()
+					+ lineBreak);
+			number++;
+		}
+
+		final SkeletonResultComplex resultComplex = mAlgorithmus.getResultComplex();
+		resultComplex.printStats();
+
+		// durchlaufe alle Faces und berechne die Texturkoodinaten basierend
+		// auf den Ausdehnungen der Eingabetextur
+		float textureWidth = config.getTexture().getWidth();
+		float textureHeight = config.getTexture().getHeight();
+
+		Iterator<ResultFace> faceIter = resultComplex.getFaces().iterator();
+
+		while (faceIter.hasNext()) {
+			faceIter.next().finalizeFace(textureWidth, textureHeight);
+		}
+
+		// basierend auf den Ausdehnungsverhaeltnissen aller berechneten
+		// Elemente skaliert man nun die Textur
+		// und validiert anschliessend, ob die berechnete Skalierung
+		// innerhalb des Texturkoordinatenraums liegt
+		faceIter = resultComplex.getFaces().iterator();
+
+		while (faceIter.hasNext()) {
+			faceIter.next().scaleAndValidateTexture();
+		}
+
+		logger.info(output);
+		printMessageBuffer();
+
+		output = new StringBuffer();
+		output.append("Die Berechnung benoetigte " + result + " ms" + lineBreak);
+		output.append("-----------------------------------------------------------------------"
+				+ lineBreak);
+		logger.info(output);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	protected void finalize() throws Throwable {
+		logger.info("Zerstöre Roof-Controller...");
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Gibt alle aktuell im Message-Buffer enthaltenen Nachrichten aus
+	 */
+	private void printMessageBuffer() {
+
+		List<String> messageBuffer = mAlgorithmus.getMessageBuffer();
+
+		StringBuffer output = new StringBuffer("");
+		String lineBreak = System.getProperty("line.separator");
+		output.append("-----------------------------------------------------------------------"
+				+ lineBreak);
+		output.append("Der Message-Buffer enthaelt " + messageBuffer.size()
+				+ " Meldungen" + lineBreak);
+		for (int i = 0; i < messageBuffer.size(); i++) {
+			output.append(i + 1 + ": " + messageBuffer.get(i) + lineBreak);
+		}
+		output.append("-----------------------------------------------------------------------");
+		logger.info(output);
+
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return Liefert saemtliche waehrend der Berechnung aufgetretenen Events
+	 * @see skeleton.algorithm.StraightSkeleton#getEvents()
+	 */
+	public List<iStraightSkeletonEvent> getEvents() {
+		return mAlgorithmus.getEvents();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return Liefert saemtliche berechneten Schnittpunkte 
+	 * @see skeleton.algorithm.StraightSkeleton#getSchnittpunktBuffer()
+	 */
+	public List<MyVector3f> getSchnittpunktBuffer() {
+		return mAlgorithmus.getSchnittpunktBuffer();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return Liefert saemtliche berechneten Polygone, unterteilt nach den einzelnen Berechnungsstufen
+	 * @see skeleton.algorithm.StraightSkeleton#getAllPolygons()
+	 */
+	public List<List<SkeletonPolygon>> getAllPolygons() {
+		return mAlgorithmus.getAllPolygons();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return Liefert das komplexe Resultobjekt
+	 * @see skeleton.algorithm.StraightSkeleton#getResultComplex()
+	 */
+	public SkeletonResultComplex getResultComplex() {
+		return mAlgorithmus.getResultComplex();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return Liefert saemtliche waherend der Berechnung erzeugten virtuellen Kanten
+	 * @see skeleton.algorithm.StraightSkeleton#getVirtualEdges()
+	 */
+	public List<Ray> getVirtualEdges() {
+		return mAlgorithmus.getVirtualEdges();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return Liefert die geschaetzte Geanuigkeitsabweichung
+	 * @see skeleton.algorithm.StraightSkeleton#getMaxAccuracyDeviation()
+	 */
+	public float getMaxAccuracyDeviation() {
+		return mAlgorithmus.getMaxAccuracyDeviation();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mInputVertices
+	 */
+	public List<Vertex3d> getInputVertices() {
+		return mInputVertices;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	
+}

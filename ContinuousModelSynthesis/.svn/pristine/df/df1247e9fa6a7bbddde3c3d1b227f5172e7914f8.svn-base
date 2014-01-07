@@ -1,0 +1,238 @@
+package modelsynthesis.model;
+
+import java.util.HashSet;
+import java.util.Set;
+
+import math.Ray;
+
+import org.apache.log4j.Logger;
+
+/**
+ * 
+ * Klasse dient der Repraesentation von Strahlen inklusive ihres Status
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public class RayWrapper extends ModelSynthesisBaseGeometry {
+
+	/** Logging-Instanz */
+	protected final static Logger LOGGER = Logger.getLogger("modelsynthesis.model.raywrapper");
+	
+	/** Strahl, der die Kante repraesentiert */
+	private transient Ray mRay = null;
+
+	/** ACHTUNG: Die gewrappten Vertices werden bei Skalierungen des Komponentenstrahls nicht skaliert! */
+	/** Gewrapptes Startvertex des Strahls */
+	private transient VertexWrapper mStartVert = null;
+
+	/**
+	 * Gewrapptes Endvertex des Strahls => wird fuer die Beschleunigung der
+	 * Polygonberechnung benoetigt
+	 */
+	private transient VertexWrapper mEndVert = null;
+	
+	/** Temporaerer Buffer speichert s*/
+	private transient Set<Face> mFaces = null;
+	
+	/** Wenn es sich um einen parallelen Startstrahl handelt, ist hier der Quellstrahl gespeichert */
+	private transient RayWrapper mParent = null;
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mRay
+	 */
+	public Ray getRay() {
+		return mRay;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mState
+	 * @param mLabel
+	 * @param mStartVert
+	 * @param mEndVert
+	 */
+	public RayWrapper(State mState, String mLabel, VertexWrapper mStartVert,
+			VertexWrapper mEndVert) {
+		super(mState, mLabel);
+		this.mStartVert = mStartVert;
+		this.mEndVert = mEndVert;
+		this.mRay = new Ray(mStartVert.getVertex(), mEndVert.getVertex());
+		this.mFaces = new HashSet<Face>(2);
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * 
+	 * @param mState
+	 * @param mLabel
+	 * @param mStartVert
+	 * @param mEndVert
+	 * @param parent
+	 */
+	public RayWrapper(State mState, String mLabel, VertexWrapper mStartVert,
+			VertexWrapper mEndVert, RayWrapper parent) {
+		super(mState, mLabel);
+		this.mStartVert = mStartVert;
+		this.mEndVert = mEndVert;
+		this.mRay = new Ray(mStartVert.getVertex(), mEndVert.getVertex());
+		this.mFaces = new HashSet<Face>(2);
+		this.mParent = parent;
+	}
+	
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mRay
+	 *            the mRay to set
+	 */
+	public void setRay(Ray mRay) {
+		this.mRay = mRay;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mEndVert
+	 */
+	public VertexWrapper getEndVert() {
+		return mEndVert;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mStartVert
+	 */
+	public VertexWrapper getStartVert() {
+		return mStartVert;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Speichert ein Face als direkten Nachbarn des Strahls. Dabei wird nicht
+	 * zwischen linkem und rechtem Face unterschieden. 
+	 * 
+	 * @param face
+	 *            Face, das als Nachbar des aktuellen Strahls gespeichert wird.
+	 */
+	public void addFaceUndirected(final Face face) {
+		LOGGER.trace("Adde Face " + face.getID() + " als ungerichteten Nachbarn zu Strahl " + getID());
+		if(!mFaces.contains(face)) mFaces.add(face);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode gibt an, ob der aktuelle Strahl das uebergebene Vertex als Start-
+	 * oder Endvertex enthaelt
+	 * 
+	 * @param vert
+	 *            Vertex, fuer das geprueft werden soll, ob es Start oder Ende
+	 *            des aktuellen Strahls ist
+	 * @return True. falls das Vertex Start oder Ende des Strahls ist, False
+	 *         sonst
+	 */
+	public boolean containsVertex(final VertexWrapper vert) {
+		if (this.mEndVert == vert || this.mStartVert == vert)
+			return true;
+		else
+			return false;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert eine einfache Konkatenation der beteiligten Vertex-IDs
+	 * 
+	 * @return Konkatenierte Vertex-ID
+	 */
+	public String getVertexBasedID() {
+		return mStartVert.getID() + "_" + mEndVert.getID();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode gibt die Anzahl adjazenter Faces zurueck, die fuer den aktuellen
+	 * Strahl gespeichert wurden
+	 * 
+	 * @return Anzahl adjazenter Faces
+	 */
+	public int getNumberOfAdjacentFaces() {
+		return mFaces.size();
+	}
+
+	
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public Set<Face> getAdjacentFaces() {
+		return mFaces;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/* (non-Javadoc)
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		return "ID: " + getID() + " Strahl: " + getRay();
+	}
+	// ------------------------------------------------------------------------------------------
+	/** hashCode() und equals() betrachten nur das Start- und Endvertex, um die Gleichheit der Strahlen zu bestimmen*/
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result
+				+ ((mEndVert == null) ? 0 : mEndVert.hashCode());
+		result = prime * result
+				+ ((mStartVert == null) ? 0 : mStartVert.hashCode());
+		return result;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		RayWrapper other = (RayWrapper) obj;
+		if (mEndVert == null) {
+			if (other.mEndVert != null)
+				return false;
+		} else if (!mEndVert.equals(other.mEndVert))
+			return false;
+		if (mStartVert == null) {
+			if (other.mStartVert != null)
+				return false;
+		} else if (!mStartVert.equals(other.mStartVert))
+			return false;
+		return true;
+	}
+	// ------------------------------------------------------------------------------------------	
+
+	@Override
+	public Set<ModelSynthesisBaseGeometry> getAdjacentComponents() {
+		Set<ModelSynthesisBaseGeometry> result = new HashSet<ModelSynthesisBaseGeometry>(2);
+		result.add(mStartVert);
+		result.add(mEndVert);
+		return result;
+	}
+	// ------------------------------------------------------------------------------------------	
+
+	/**
+	 * @return the mParent
+	 */
+	public RayWrapper getParent() {
+		return mParent;
+	}
+	// ------------------------------------------------------------------------------------------	
+
+}

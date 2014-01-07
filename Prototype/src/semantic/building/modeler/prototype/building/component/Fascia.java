@@ -1,0 +1,376 @@
+package semantic.building.modeler.prototype.building.component;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+
+import processing.core.PApplet;
+import semantic.building.modeler.configurationservice.model.AbstractConfigurationObject;
+import semantic.building.modeler.configurationservice.model.component.FasciaComponentConfiguration;
+import semantic.building.modeler.configurationservice.model.component.MouldingComponentConfiguration;
+import semantic.building.modeler.configurationservice.model.enums.Side;
+import semantic.building.modeler.configurationservice.model.enums.VerticalAlignment;
+import semantic.building.modeler.math.MyPolygon;
+import semantic.building.modeler.math.MyVector3f;
+import semantic.building.modeler.math.MyVectormath;
+import semantic.building.modeler.math.Ray;
+import semantic.building.modeler.math.Vertex3d;
+import semantic.building.modeler.prototype.algorithm.BoundingBoxCreator;
+import semantic.building.modeler.prototype.graphics.complex.AbstractComplex;
+import semantic.building.modeler.prototype.graphics.complex.FreeComplex;
+import semantic.building.modeler.prototype.graphics.complex.ImportedComplex;
+import semantic.building.modeler.prototype.graphics.complex.OBB;
+import semantic.building.modeler.prototype.graphics.primitives.AbstractQuad;
+import semantic.building.modeler.prototype.service.ObjectPositioningService;
+
+/**
+ * Klasse modelliert Gurtgesimse, also Gesimse, die vollstaendig um ein Gebaeude
+ * verlaufen und die an Hausecken zusaetzliche Komponenten zugewiesen bekommen,
+ * die angrenzende Gesimse verbinden
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public class Fascia extends AbstractBuildingComponent {
+
+	/** Objekt, an das die Fascia appliziert wird */
+	private transient AbstractComplex mTargetComplex = null;
+
+	// ------------------------------------------------------------------------------------------
+
+	public Fascia(final PApplet applet) {
+		super(applet);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Konstruktor mit Uebergabe einer Konfiguration
+	 * 
+	 * @param applet
+	 *            Drawing Context
+	 * @param mouldingConf
+	 *            Konfigurationsobjekt
+	 */
+	public Fascia(final PApplet applet,
+			final AbstractConfigurationObject fasciaConf,
+			final AbstractComplex targetComplex) {
+		super(applet, fasciaConf);
+		mTargetComplex = targetComplex;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void createComponent() {
+
+		// Profil-Model ueber Config laden
+		final FasciaComponentConfiguration conf = (FasciaComponentConfiguration) mConf;
+
+		// Lade das ausgewaehlte Profil aus der 3D-Quelldatei
+		final AbstractComplex mouldingProfile = ObjectPositioningService
+				.getInstance().getModelFromComponentSource(
+						conf.getComponentModel());
+
+		// alle Outdoor-Quads laden, die nicht Decke und Boden sind
+		final List<AbstractQuad> targetQuads = new ArrayList<AbstractQuad>(
+				mTargetComplex.getOutdoorQuads());
+
+		// sortiere Decken- und Bodenquads aus
+		Iterator<AbstractQuad> quadIter = targetQuads.iterator();
+		AbstractQuad currentQuad = null;
+		while (quadIter.hasNext()) {
+			currentQuad = quadIter.next();
+			if (currentQuad.isTopOrBottom())
+				quadIter.remove();
+		}
+
+		final List<ImportedComplex> mouldingBuffer = new ArrayList<ImportedComplex>(
+				targetQuads.size());
+		final List<Float> scaledProfileLengthBuffer = new ArrayList<Float>(
+				targetQuads.size());
+
+		// erzeuge fuer jedes Quad eine Moulding-Komponente
+		Moulding moulding = null;
+		ImportedComplex currentMoulding = null;
+		for (AbstractQuad curQuad : targetQuads) {
+
+			LOGGER.debug("Quad-Direction: " + curQuad.getDirection()
+					+ " Normal: " + curQuad.getNormal());
+			MouldingComponentConfiguration mouldConf = new MouldingComponentConfiguration(
+					conf.getMouldingHeightRatio(), VerticalAlignment.TOP);
+
+			// MouldingConfig mouldConf = new MouldingConfig(null,
+			// VerticalAlignment.TOP, conf.getMouldingScale(), mouldingProfile,
+			// currentQuad.getPolygon());
+
+			moulding = new Moulding(mComponent.getParent(), mouldConf,
+					mouldingProfile, curQuad.getPolygon());
+			moulding.createComponent();
+			currentMoulding = moulding.getComponent();
+			mouldingBuffer.add(currentMoulding);
+			scaledProfileLengthBuffer.add(moulding.getScaledProfileLength());
+			extractDataFromComponent(currentMoulding);
+		}
+
+		// erstelle Gesimseverbindungen fuer die Moulding-Quads
+		createMouldingConnection(targetQuads, Side.TOP,
+				scaledProfileLengthBuffer, mouldingBuffer);
+		createMouldingConnection(targetQuads, Side.BOTTOM,
+				scaledProfileLengthBuffer, mouldingBuffer);
+
+		mComponent.finalizeCreation();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet, ob zwischen den beiden Gesimsestrukturen eine Verbindung
+	 * erzeugt werden soll. Dies ist der Fall, sofern sich die Strukturen nicht
+	 * ueberlappen. Der hier verwendete Test ist vergleichsweise aufwendig, da
+	 * er zunaechst die OBB fuer die Gesimse berechnet und dann mittels
+	 * Separating Axis Theorem-Test (SAT) auf Schnitte prueft. Wird aktuell
+	 * nicht eingebunden, da der eingesetzte Winkeltest ausreicht, um zu
+	 * entscheiden, ob Ueberlappungen vorliegen oder nicht. ACHTUNG: Das
+	 * SAT-Verfahren ist noch nicht ausreichend getestet
+	 * 
+	 * @param moulding1
+	 *            Gesimse1
+	 * @param moulding2
+	 *            Gesimse2
+	 * @return True, falls keine Ueberlappung der Uebergabegesimse vorliegt,
+	 *         False sonst
+	 */
+	private boolean createConnection(ImportedComplex moulding1,
+			ImportedComplex moulding2) {
+
+		OBB obb1 = moulding1.getOBB();
+		BoundingBoxCreator bbCreator = new BoundingBoxCreator();
+
+		List<MyPolygon> faces = null;
+		List<AbstractQuad> mouldingQuads = null;
+
+		if (obb1 == null) {
+
+			mouldingQuads = moulding1.getAllQuads();
+			faces = new ArrayList<MyPolygon>(mouldingQuads.size());
+			for (int i = 0; i < mouldingQuads.size(); i++)
+				faces.add(mouldingQuads.get(i).getPolygon());
+
+			obb1 = (OBB) bbCreator.computeOBBBruteForceNoCH(faces,
+					moulding1.getVertices());
+			moulding1.setBB(obb1);
+		}
+
+		OBB obb2 = moulding2.getOBB();
+		if (obb2 == null) {
+
+			mouldingQuads = moulding2.getAllQuads();
+			faces = new ArrayList<MyPolygon>(mouldingQuads.size());
+			for (int i = 0; i < mouldingQuads.size(); i++)
+				faces.add(mouldingQuads.get(i).getPolygon());
+
+			obb2 = (OBB) bbCreator.computeOBBBruteForceNoCH(faces,
+					moulding2.getVertices());
+			moulding2.setBB(obb2);
+		}
+
+		return obb1.intersectsSAT(obb2);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erzeugt Gesimseverbindungen fuer die uebergebenen Quads mit den
+	 * uebergebenen Gesimsen.
+	 * 
+	 * @param quads
+	 *            Liste mit Quads, an denen Gesimse angebracht wurden und fuer
+	 *            die Verbindungen berechnet werden
+	 * @param direction
+	 *            Richtung, von der ausgehend Verbindungen angebracht werden
+	 *            (ausgehend vom TOP- oder BOTTOM-Quad der angebrachten Gesimse)
+	 * @param scaledProfileLengthBuffer
+	 *            Laenge der skalierten Profile (wurde beim Anbringen der
+	 *            Gesimse selber gebuffert
+	 * @param createConnectionFlags
+	 *            Liste mit Flags, die angeben, ob zwischen 2
+	 *            aufeinanderfolgenden Gesimsen eine Verbindung erstellt werden
+	 *            soll
+	 */
+	private void createMouldingConnection(List<AbstractQuad> quads,
+			Side direction, List<Float> scaledProfileLengthBuffer,
+			List<ImportedComplex> mouldingBuffer) {
+
+		// die Abfolge der Quads, Mouldings und skalierte Laenge ist dabei in
+		// allen Buffern identisch
+		AbstractQuad nextQuad = null, mouldingQuadInput = null, currentQuad = null;
+		double currentAngleRad, halfAngleRad;
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		float extrusionLength;
+		ImportedComplex currentMoulding = null;
+		ObjectPositioningService objService = ObjectPositioningService
+				.getInstance();
+
+		double fullAngleRad;
+
+		for (int i = 0; i < quads.size(); i++) {
+
+			currentQuad = quads.get(i);
+			nextQuad = quads.get((i + 1) % quads.size());
+			fullAngleRad = mathHelper.getFullAngleRad(currentQuad.getNormal(),
+					nextQuad.getNormal());
+
+			currentAngleRad = mathHelper.calculateAngleRadians(
+					currentQuad.getNormal(), nextQuad.getNormal());
+			halfAngleRad = currentAngleRad / 2.0d;
+
+			// logger.error("FULL: " + fullAngleRad + " CURRENT: " +
+			// currentAngleRad);
+
+			if (fullAngleRad < Math.PI / 2.0d) {
+
+				continue;
+				// wenn der Vollwinkel < 90° ist, teste, ob sich die erstellten
+				// Gesimse ueberschneiden => aufwaendiger Test, zunaechst
+				// unnoetig
+				// if(!createConnection(mouldingBuffer.get(i),
+				// mouldingBuffer.get((i + 1) % mouldingBuffer.size())))
+				// continue;
+			}
+
+			// rechtwinkliges Dreieck: Laenge Gegenkathete := Laenge Ankathete *
+			// tan alpha
+			extrusionLength = (float) (scaledProfileLengthBuffer.get(i) * Math
+					.tan(halfAngleRad));
+
+			// je nach Zielrichtung muessen die Komponenten geswitcht werden, da
+			// man sonst Elemente baut, die nicht zwischen den beiden
+			// verwendeten Quads liegen
+			if (direction.equals(Side.TOP))
+				currentMoulding = mouldingBuffer.get(i);
+			// bei BOTTOM-Ausrichtung verwendet man das naechste Gesimse, da man
+			// von diesem das Bottom-Quad verwendet (dieses liegt am Zielquad
+			// an)
+			// hier muessen dann auch die beiden Quads gedreht werden, damit die
+			// Adjazenzberechnung das korrekte Quad testet
+			else {
+				currentMoulding = mouldingBuffer.get((i + 1)
+						% mouldingBuffer.size());
+
+				// CURRENT und NEXT drehen
+				AbstractQuad temp = currentQuad;
+				currentQuad = nextQuad;
+				nextQuad = temp;
+			}
+
+			LOGGER.trace("ScaledProfileLength: "
+					+ scaledProfileLengthBuffer.get(i));
+			LOGGER.trace("CurrentQuad Direction: " + currentQuad.getDirection()
+					+ " NextQuad Direction: " + nextQuad.getDirection());
+			LOGGER.trace("Winkel: " + halfAngleRad + " Laenge: "
+					+ extrusionLength + " CurrentNormal: "
+					+ currentQuad.getNormal() + " NextNormal: "
+					+ nextQuad.getNormal());
+
+			mouldingQuadInput = currentMoulding.getQuadByDirection(direction);
+			assert mouldingQuadInput != null : "FEHLER: Es konnte kein Quad mit Ausrichtung '"
+					+ direction + "' aus dem Gesimse extrahiert werden!";
+
+			// erstelle das Objekt als FreeComplex, um die
+			// Extrusionsberechnungen verwenden zu koennen
+			// uebergebe eine leere Alignment-Map => dadurch bleiben die Profile
+			// an den Seiten TOP- und BOTTOM => diese Ausrichtungsbzeichnungen
+			// richten sich dabei nach der Erzeugungstruktur, nicht nach der
+			// "regulaeren" Ausrichtung der von TOP- und BOTTOM
+			// TOP ist das Quad, das aus dem Eingabegrundriss in Hoehe des
+			// Objekts in Richtung der Grundrissnormalen verschoben wird
+			LOGGER.trace("EXTRUSION-LENGTH: " + extrusionLength
+					+ " EXTRUSIONSVEKTOR: "
+					+ mouldingQuadInput.getPolygon().getNormal());
+			FreeComplex mouldingFree = new FreeComplex(mComponent.getParent(),
+					mouldingQuadInput.getPolygon(), extrusionLength,
+					new HashMap<MyVector3f, Side>(1), false);
+			mouldingFree.create();
+			mouldingFree.unregister();
+
+			// vorderes Quad des neu erzeugten Elements
+			mouldingQuadInput = mouldingFree.getQuadByDirection(Side.TOP);
+
+			// bestimme das Quad, dessen Mittelpunkt den geringsten Abstand zum
+			// aktuellen Quad hat (das ist die am Gebaeude anliegende Seite)
+			List<AbstractQuad> outdoorQuadsConnector = mouldingFree
+					.getOutdoorQuads();
+			float currentDistance, minDistance = Float.MAX_VALUE;
+			AbstractQuad currentOutdoorQuad = null, adjacentQuad = null;
+			for (int k = 0; k < outdoorQuadsConnector.size(); k++) {
+				currentOutdoorQuad = outdoorQuadsConnector.get(k);
+				currentDistance = mathHelper.calculatePointPlaneDistance(
+						currentOutdoorQuad.getCenter(), currentQuad.getPlane());
+				if (currentDistance == 0.0f) {
+					adjacentQuad = currentOutdoorQuad;
+					break;
+				} else if (currentDistance < minDistance) {
+					minDistance = currentDistance;
+					adjacentQuad = currentQuad;
+				}
+			}
+
+			// mit dem Moulding-Quad und dem adjazenten Quad kann man nun eine
+			// gemeinsame Kante bestimmen => diese gemeinsame Kante muss
+			// entgegen der
+			// Richtung des adjazenten Quads um die Laenge des Gesimsprofils
+			// verschoben werden
+			Ray sharedEdge = objService.getSharedEdge(
+					mouldingQuadInput.getPolygon(), adjacentQuad.getPolygon());
+			assert sharedEdge != null : "FEHLER: Es konnte keine gemeinsame Kante fuer die Quads "
+					+ mouldingQuadInput.getID()
+					+ " und "
+					+ adjacentQuad.getID() + " gefunden werden!";
+
+			List<Vertex3d> mouldingVerts = mouldingFree.getVertices();
+
+			// hole Pointer auf die Vertices
+			int index1 = mouldingVerts.indexOf(sharedEdge.getStartVertex());
+			int index2 = mouldingVerts.indexOf(sharedEdge.getEndVertex());
+			assert index1 != -1 && index2 != -1 : "FEHLER: Die Vertices der gemeinsamen Kante konnten nicht aus dem Vertexbuffer extrahiert werden!";
+
+			Vertex3d vert1 = mouldingVerts.get(index1);
+			Vertex3d vert2 = mouldingVerts.get(index2);
+
+			MyVector3f translation = adjacentQuad.getNormal();
+			translation.scale(-scaledProfileLengthBuffer.get(i));
+			vert1.getPositionPtr().add(translation);
+			vert2.getPositionPtr().add(translation);
+			adjacentQuad.update();
+
+			// nun alle Vertices des Bottom Quads auf die neu gebildete Ebene
+			// projizieren
+			List<Vertex3d> quadVerts = mouldingQuadInput.getQuadVertices();
+
+			// projiziere dabei ausgehend von der Quelleben direkt auf die
+			// Zielebene, dadurch werden Verzerrungen vermieden
+			mathHelper.calculatePlaneToPlaneProjectionForPointsNoRotation(
+					mouldingQuadInput.getPlane(), adjacentQuad.getPlane(),
+					quadVerts);
+
+			// loesche das anliegende und das Cap-Quad, da hier spaeter die
+			// naechste verwendete Verbindung anliegt und die Oeffnung schliesst
+			mouldingFree.getOutdoorQuads().remove(adjacentQuad);
+			mouldingFree.getOutdoorQuads().remove(mouldingQuadInput);
+
+			// fuege die Verbindung zum Buffer hinzu
+			extractDataFromComponent(mouldingFree);
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	protected String getType() {
+		return "fascia";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

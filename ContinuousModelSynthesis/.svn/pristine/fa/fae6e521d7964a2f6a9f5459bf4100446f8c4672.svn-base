@@ -1,0 +1,63 @@
+package semantic.city.builder.modelsynthesis.algorithm;
+
+/**
+ * Klasse modelliert eine ID-Erzeugung ueber fortlaufende Indices. Sobald ein
+ * Objekt erzeugt wird, fordert es eine ID von dieser Klasse an. Implementiert
+ * als Singleton.
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public class IDGenerator {
+
+	/** Singleton-Instance */
+	private static IDGenerator mInstance = null;
+
+	/** ID-Index */
+	private transient int nextID = 0;
+	
+	/** Label Index */
+	private transient int nextLabelIndex = 0;
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Versteckter Default-Konstruktor
+	 */
+	private IDGenerator() {
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Singleton-Getter
+	 * 
+	 * @return Singleton-Instance
+	 */
+	public static IDGenerator getInstance() {
+		if (mInstance == null)
+			mInstance = new IDGenerator();
+		return mInstance;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert die naechste fortlaufende ID
+	 * @return Naechste fortlaufende ID innerhalb der Singleton-Klasse
+	 */
+	public int getID() {
+		return nextID++;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert fortlaufende IDs fuer Labels
+	 * @return Naechste fortlaufende ID fuer das naechste Label
+	 */
+	public int getLabelID() {
+		return nextLabelIndex++;
+	}
+	// ------------------------------------------------------------------------------------------
+
+
+}

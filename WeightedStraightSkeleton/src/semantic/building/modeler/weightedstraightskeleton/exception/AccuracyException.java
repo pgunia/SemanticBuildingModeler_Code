@@ -1,0 +1,45 @@
+package semantic.building.modeler.weightedstraightskeleton.exception;
+
+/**
+ * 
+ * @author Patrick Gunia Exceptions dieser Klasse werden geworfen, wenn eine zu
+ *         hohe Abweichung der Kindvertices von einem Strahl festgestellt wird,
+ *         der vom Ausgangsknoten durch das erste Kind verlaeuft. Solche
+ *         Exceptions werden geworfen, wenn die Berechnung fehlschlug und die
+ *         berechnete maximale Abweichung ueber einem Grenzwert liegt
+ * 
+ */
+public class AccuracyException extends Exception {
+
+	// ------------------------------------------------------------
+	/**
+	 * Konstruktor mit Message-Uebergabe
+	 * 
+	 * @param message
+	 *            Exception-Message
+	 */
+	public AccuracyException(String message) {
+
+		// calle die Basisklasse
+		super(message);
+	}
+
+	// ------------------------------------------------------------
+
+	/**
+	 * Konstruktor mit Message-Uebergabe
+	 * 
+	 * @param message
+	 *            Exception-Message
+	 * @param cause
+	 *            Exception-Cause
+	 */
+	public AccuracyException(String message, Throwable cause) {
+
+		// calle die Basisklasse
+		super(message, cause);
+
+	}
+	// ------------------------------------------------------------
+
+}

@@ -1,0 +1,816 @@
+package modelsynthesis.algorithm;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.PriorityQueue;
+import java.util.Set;
+
+import math.MyPolygon;
+import math.MyVector3f;
+import math.MyVectormath;
+import math.Ray;
+import math.Vertex3d;
+import modelsynthesis.model.Face;
+import modelsynthesis.model.RayWrapper;
+import modelsynthesis.model.State;
+import modelsynthesis.model.VertexWrapper;
+
+import org.apache.log4j.Logger;
+
+/**
+ * Klasse berechnet basierend auf den parallelen Strahlen und Schnittpunkten eine Menge von Faces, die durch diese erzeugt werden
+ * @author Patrick Gunia
+ *
+ */
+
+public class FaceComputation {
+	
+	/** Logging-Instanz */
+	protected final static Logger LOGGER = Logger.getLogger("modelsynthesis.algorithm.facecomputation");
+	
+	/** Schnittpunkte der parallelen Strahlen */
+	private transient List<VertexWrapper> mVertices = null;
+	
+	/** Liste enthaelt die Ergebnisse der Berechnungen */
+	private transient List<Face> mFaces = null;
+	
+	/** Map-Struktur speichert Kantengewichte ueber die String-Indices der Kanten */
+	private transient Map<String, Integer> mWeights = null;
+	
+	/** Map zur Verwaltung der Abstaende */
+	private transient Map<Integer, Integer> mDistances = null;
+	
+	/** Map zur Verwaltung der Vorgaenger auf den jeweils kuerzesten Wegen zum Zielknoten */
+	private transient Map<VertexWrapper, VertexWrapper> mPrevious = null;
+	
+	/** Standardkantengewicht */
+	private static final int mStandardWeight = 1;
+	
+	/** Max-Kantengewicht */
+	private static final int mMaxWeight = 10000;
+	
+	/** Halbes maximales Kantengewicht */
+	private static final int mHalfMaxWeight = mMaxWeight / 2;
+		
+	/** PriorityQueue zur Verwaltung der Knoten, die bereits besucht wurden */
+	private transient PriorityQueue<VertexWrapper> mUnsettledNodes = null;
+	
+	/** Liste mit Kanten, die bereits getestet wurden */
+	private transient Set<String> mComputedEdges = null;
+	
+	/** Wenn eine Kante im ersten Durchlauf des Verfahrens verwendet wurde, wird sie als genutzt markiert, damit das Verfahren im zweiten Durchlauf das zweite adjazente Polygon errechnet */
+	private transient Map<String, Integer> mUsedEdges = null;
+	
+	/** Zaehlt, wie oft Kanten schon in berechneten Polygonen vorkamen => kommt eine Kante in zwei Polygonen vor, wird ihre Berechnung uebersprungen */
+	private transient Map<String, Integer> mEdgeCounter = null;
+	
+	/** Speichert die Mittelpunkte aller Polygone, die bereits berechnet wurden.
+	 * Wird verwendet, um die Erzeugung doppelter Polygone zu vermeiden
+	 */
+	private transient List<MyVector3f> mPolyCenter = null;
+	
+	/** Liste mit konkatenierten Polygondeskriptoren */
+	private transient List<String> mPolyDescriptors = null;
+		
+	/** 
+	 * Maximale Anzahl an Strahlen in einem gueltigen Polygon, das berechnet wird. Dies entspricht der doppelten Anzahl an Strahlen im
+	 * Eingabepolygon. In diesem Fall werden alle Strahlen in der Mitte getroffen, so dass genau doppelt so viele Segmente erzeugt werden.
+	 */
+	private transient Integer mMaxNumberOfWaypointsInValidPoly = null;
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mVertices Vertices des Eingabepolygons
+	 * @param numberOfSourceRays Anzahl der Strahlen des Eingabepolygons
+	 */
+	public FaceComputation(final List<VertexWrapper> mVertices, final int numberOfSourceRays) {
+		super();
+		this.mVertices = mVertices;
+		
+		// Groesse ist eine reine Schaetzung
+		this.mFaces = new ArrayList<Face>(mVertices.size());
+		this.mComputedEdges = new HashSet<String>(mVertices.size());
+		this.mUsedEdges = new HashMap<String, Integer>();
+		this.mEdgeCounter = new HashMap<String, Integer>();
+		
+		this.mPolyCenter = new ArrayList<MyVector3f>();
+		this.mPolyDescriptors = new ArrayList<String>();
+		this.mMaxNumberOfWaypointsInValidPoly = numberOfSourceRays * 2;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode ist der Controller fuer die Faceberechnung und waehlt die Start- und Zielknoten fuer den Dijkstra-Algorithmus
+	 * Ausgeschlossen sind Start- und Nachbarknoten, die nicht ueber genau 4 Nachbarn verfuegen
+	 * @return Liste mit allen Polygonen, die berechnet wurden
+	 */
+	public List<Face> computeFaces() {
+		
+		boolean computeSingleFace = false;
+		VertexWrapper currentStart = null, currentEnd = null;
+		List<VertexWrapper> neighbourNeighbours = null;
+		List<RayWrapper> adjacentRays = null;
+		RayWrapper currentRay = null;
+		
+		for(int i = 0; i < mVertices.size(); i++) {
+			currentStart = mVertices.get(i);
+		
+			adjacentRays = currentStart.getRays();
+			LOGGER.trace("Vert: " + currentStart.getVertex() + " #Nachbarn: " + adjacentRays.size());
+			
+			// verwende das Vertex nur, wenn es 4 Nachbarn hat
+			// dadurch werden Start- und Endvertices von vornherein aus der Berechnung ausgeschlossen
+			if(adjacentRays.size() < 4) continue;
+			
+			for(int j = 0; j < adjacentRays.size(); j++) {
+				currentRay = adjacentRays.get(j);
+				currentEnd = currentRay.getEndVert();
+				
+				// wenn Start und End identisch sind, verwende das jeweils andere Vertex => ist erforderlich, da die Rays ein- und ausgehend sind
+				if(currentEnd == currentStart) currentEnd = currentRay.getStartVert();
+						
+				neighbourNeighbours = currentEnd.getNeighbours();
+				LOGGER.trace("Nachbar: " + currentStart.getVertex() + " #NachbarNachbarn: " + neighbourNeighbours.size());
+			
+				if(computeSingleFace) {
+					
+					// Wegpunkte extrahieren
+					List<VertexWrapper> waypoints = computeShortestPathFromStartToTarget(currentStart, currentEnd, currentRay);
+					
+					// Face erzeugen
+					Face newFace = new Face(State.UNDEFINED, null, createPolyFromWaypoints(waypoints));
+					mFaces.add(newFace);
+					
+					return mFaces;
+				}
+				else {
+					
+					// auch hier, nur vernwenden, wenn 4 Nachbarn gesetzt sind und die Kante nicht bereits vollstaendig berechnet wurde
+					if(neighbourNeighbours.size() < 4 || mComputedEdges.contains(getNormalizedID(currentStart, currentEnd))) continue;
+					else {
+					
+						// fuehre die Berechnung zweimal durch, gewichte dabei nach dem ersten Durchlauf die Kanten, die besucht wurden, hoeher, damit sie 
+						// beim zweiten Durchlauf ignoriert werden
+						LOGGER.trace("Starting with: " + currentStart.getVertex() + " Target: " +  currentEnd.getVertex());
+						
+						List<VertexWrapper> waypoints = computeShortestPathFromStartToTarget(currentStart, currentEnd, currentRay);
+						
+						// unabhaengig davon, ob es sich um ein gueltiges Polygon handelt, muessen die verwendeten Segmente markiert werden
+						// wenn es sich um ein ungueltiges Polygon handelt, wird die erneute Berechnung im naechsten Schritt verhindert
+						markEdgesForWaypointsLocal(waypoints);
+						
+						Face extractedFace = processWaypoints(waypoints);
+						if(extractedFace != null) {
+							LOGGER.info("Face erzeugt: " + extractedFace.getID() + " fuer Kante von Start: " + currentStart.getID() +  " End: " + currentEnd.getID());
+						}
+						
+						// zweiter Durchlauf => bei der Berechnung der Polygone wurden die Kantengewichte der verwendeten Kanten hochgesetzt
+						waypoints =  computeShortestPathFromStartToTarget(currentStart, currentEnd, currentRay);
+						extractedFace = processWaypoints(waypoints);
+						if(extractedFace != null) {
+							LOGGER.info("Face erzeugt: " + extractedFace.getID() + " fuer Kante von Start: " + currentStart.getID() +  " End: " + currentEnd.getID());
+						}
+						// Visitcounter zuruecksetzen
+						mUsedEdges.clear();
+						
+						// Kante wurde vollstaendig verarbeitet
+						mComputedEdges.add(getNormalizedID(currentStart, currentEnd));
+					}
+				}
+			}
+		} 
+		
+		LOGGER.info("Insgesamt wurden " + mFaces.size() + " Polygone berechnet!");
+		return mFaces;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode verarbeitet die durch den Dijkstra-Algorithmus erzeugten Wegpunkte weiter
+	 * @param waypoints Liste mit den Eckpunkten des Polygons, das durch den Dijkstra-Algorithmus erzeugt wurde
+	 */
+	private Face processWaypoints(final List<VertexWrapper> waypoints) {
+		
+		if (waypoints != null && waypoints.size() <= this.mMaxNumberOfWaypointsInValidPoly ) {
+			
+			// Wegpunkte werden genau dann als ungueltig angesehen, wenn 3 aufeinanderfolgende Vertices auf einer Kante liegen
+			if(!areWaypointsValid(waypoints)) {
+				LOGGER.info("Wegpunkte wegen aufeinanderfolgender Eckpuntke abgelehnt!");
+				return null;
+			}
+			
+			MyPolygon resultPoly = null;
+			try {
+				resultPoly = createPolyFromWaypoints(waypoints);
+			}
+			catch(AssertionError e) {
+				LOGGER.error(e);
+				return null;
+			}
+			// MyVector3f polyCenter = resultPoly.getCenter();
+			
+			String polyDescriptor = generatePolyDescriptor(waypoints);
+			
+			if (mPolyDescriptors.contains(polyDescriptor)) {
+				LOGGER.debug("Polygon wurde bereits berechnet. Descriptor: "
+						+ polyDescriptor);
+				return null;
+			}
+			else {
+				/*
+				// handelt es sich um ein gueltiges Polygon?
+				if(!isValidPoly(resultPoly)) {
+					LOGGER.info("Polygon wegen aufeinanderfolgender Eckpuntke abgelehnt!");
+					return null;
+				}
+				*/
+				Face newFace = new Face(State.UNDEFINED, null, resultPoly);
+				mFaces.add(newFace);
+				
+				LOGGER.info("Erzeuge Face: " + newFace.getID() + " basierend auf folgenden Eckpunkten:");
+				for(int i = 0; i < waypoints.size(); i++) {
+					LOGGER.debug(i + ": " + waypoints.get(i).getID());
+				}
+				
+				mPolyDescriptors.add(polyDescriptor);
+
+				// markiere die Kanten global
+				markEdgesForWaypointsGlobal(waypoints);
+
+				// und speichere das berechnete Face als Nachbar saemtlicher Kanten,
+				// die in der Waypointliste vorkommen
+				addFaceToEdges(newFace, waypoints);
+				return newFace;
+
+			}
+		} else {
+			LOGGER.debug("Es konnten keine Wegpunkte extrahiert werden.");
+		}
+		
+		return null;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode validiert die uebergebenen Wegpunkte dahingehend, ob sie eine gueltige Struktur beschreiben
+	 * @param waypoints
+	 * @return
+	 */
+	private boolean areWaypointsValid(final List<VertexWrapper> waypoints) {
+	
+		// wenn zwei aufeinanderfolgende Strahlen parallel sind, ist das Polygon ungueltig
+		VertexWrapper cur = null, next = null, nextNext = null;
+		MyVector3f curToNext = null, nextToNextNext = null;
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		for(int i = 0; i < waypoints.size(); i++) {
+			cur = waypoints.get(i);
+			next = waypoints.get((i + 1) % waypoints.size());
+			nextNext = waypoints.get((i + 2) % waypoints.size());
+			
+			curToNext = new MyVector3f();
+			curToNext.sub(next.getVertex().getPositionPtr(), cur.getVertex().getPositionPtr());
+			
+			nextToNextNext = new MyVector3f();
+			nextToNextNext.sub(nextNext.getVertex().getPositionPtr(), next.getVertex().getPositionPtr());
+			
+			if(mathHelper.isParallel(curToNext, nextToNextNext)) return false;
+		}
+		return true;
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet das Uebergabepolygon dahingehend, ob es zwei aufeinanderfolgende Vertices gibt, die auf einer Kante liegen. In diesem Fall sollte
+	 * das beschriebene Polygon ungueltig sein. (IST DIESE ANNAHME GUELTIG?)
+	 * @param poly Polygon, das auf Gueltigkeit getestet wird
+	 * @return True, falls es sich um ein gueltiges Polygon handelt, false sonst
+	 */
+	private boolean isValidPoly(final MyPolygon poly) {
+		
+		Ray curRay = null, nextRay = null;
+		
+		// wenn zwei aufeinanderfolgende Strahlen parallel sind, ist das Polygon ungueltig
+		List<Ray> polyRays = poly.getRays();
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		for(int i = 0; i < polyRays.size(); i++) {
+			curRay = polyRays.get(i);
+			nextRay = polyRays.get((i + 1) % polyRays.size());
+			if(mathHelper.isParallel(curRay.getDirectionPtr(), nextRay.getDirectionPtr())) return false;
+		}
+		return true;
+	}
+	
+	
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft saemntliche Eckpunkte in der Eckpunktliste und weist den jeder Kante das neu erzeugte Face zu 
+	 * @param newFace Neu erzeugtes Oberflaechenelement
+	 * @param waypoints Liste mit den Eckpunkten des neuen Elements
+	 */
+	private void addFaceToEdges(final Face newFace, final List<VertexWrapper> waypoints) {
+		
+		LOGGER.info("Weise Face " + newFace.getID() + " zu " + waypoints.size() + " Kanten hinzu!");
+		
+		// durchlaufe saemtliche Waypoints der Reihe nach und weise den zugehoerigen Kanten das neue Face zu
+		VertexWrapper vert0 = null, vert1 = null;
+		for(int i = 0; i < waypoints.size(); i++) {
+			vert0 = waypoints.get(i);
+			vert1 = waypoints.get((i + 1) % waypoints.size());
+			addFaceToEdge(newFace, vert0, vert1);
+		}
+		
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode speichert das uebergebene Face als Nachbar der Kante, die durch die beiden uebergebenen Vertices beschrieben wird. Dabei ist a priori aufgrund der Berechnung
+	 * nicht klar, welches der beiden Vertices als Start- bzw. als Start- bzw. Endpunkt der Kante fungiert. Allerdings ist das erste uebergebene Vertex immer Ausgangspunkt
+	 * der Berechnungen. Es kann allerdings bezueglich der gesuchten Kante zwischen den beiden Punkten als Start- oder Endvertex fungieren.
+	 * @param face Face, das als Nachbar einer Kante gespeichert wird
+	 * @param vert1 Vertex1 der Kante
+	 * @param vert2 Vertex2 der Kante
+	 */
+	private void addFaceToEdge(final Face face, final VertexWrapper vert1, final VertexWrapper vert2) {
+		
+		// teste, in welcher der ein- bzw- ausgehenden Kanten des ersten Vertex das zweite Vertex als Start- bzw. Endknoten vorkommt
+		// beginne mit den Startvertices
+		List<RayWrapper> rays = vert1.getStartRays();
+		for(int i = 0; i < rays.size(); i++) {
+			if(rays.get(i).containsVertex(vert2)) {
+				rays.get(i).addFaceUndirected(face);
+				return;
+			}
+		}
+		
+		// sofern keine Zuordnung gefunden wurde, mache das Ganze erneut fuer die Endstrahlen
+		rays = vert1.getEndRays();
+		for(int i = 0; i < rays.size(); i++) {
+			if(rays.get(i).containsVertex(vert2)) {
+				rays.get(i).addFaceUndirected(face);
+				return;
+			}
+		}
+		
+		assert false: "FEHLER: Es existiert keine gemeinsame Kante zwischen " + vert1 + " und " + vert2;
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode gibt die Liste mit den Mittelpunkten aller bereits erzeugten Polygone aus und zeigt an, ob 
+	 * der Mittelpunkt des aktuellen Polygons bereits in der Liste vorkommt
+	 * @param currentCenter Mittelpunkt des zuletzt berechneten Polygons
+	 */
+	private void printPolyCenter(MyVector3f currentCenter) {
+		
+		LOGGER.info("Current Center: " + currentCenter);
+		Iterator<MyVector3f> centerIter = mPolyCenter.iterator();
+		
+		MyVector3f current = null;
+		while(centerIter.hasNext()) {
+			current = centerIter.next();
+			LOGGER.info(current + " Contains: " + current.equals(currentCenter));
+		}
+		
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet ueber den Dijsktra-Algorithmus die Polygone innerhalb des Graphen. 
+	 * http://renaud.waldura.com/doc/java/dijkstra/
+	 * @param start Startknoten, von dem aus der kuerzeste Weg berechnet werden soll
+	 * @param target Zielknoten
+	 * @param targetEdge Kante zwischen Start- und Zielknoten
+	 * @return Liste mit Wegpunkten, die auf dem kuerzesten Weg vom Start- zum Zielknoten passiert werden
+	 */
+	public List<VertexWrapper> computeShortestPathFromStartToTarget(final VertexWrapper start, final VertexWrapper target, final RayWrapper targetEdge) {
+		
+		// initialisiere saemtliche erforderlichen Datenstrutkuren
+		initAlgorithm(start, targetEdge);
+		VertexWrapper currentVertex = null;
+		
+		while(mUnsettledNodes.size() > 0) {
+
+			// hole das Vertex mit minimalem Abstand
+			currentVertex = mUnsettledNodes.poll();
+			LOGGER.trace("Current Polled: " + currentVertex.getVertex().getPositionPtr() + " Dist: " + currentVertex.getCurrentDistance());
+			
+			// wenn das Vertex dem Zielvertex entspricht, breche ab
+			if(currentVertex == target) {
+				break;
+			}
+				
+			// Nachbarschaft des Vertex aktualisieren
+			updateNeighbourDistances(currentVertex);
+		}
+		
+		// wenn die Distanz zu Zielvertex groesser als das halbe maximale Kantengewicht ist, wurde eine Kante verwendet, die bereits besucht wurde
+		// lehne in diesem Fall den berechneten Weg ab (dies kann nur beim jeweils zweiten Durchlauf der Fall sein
+		if(mDistances.get(target.getID()) > mHalfMaxWeight) {
+			LOGGER.debug("Weg abgelehent wegen Distanz > MaxDistance: " + start.getID() + ": " + start.getVertex() +  " zum Ziel: " + target.getID() + ": " + target.getVertex() + " besitzt Laenge: " + mDistances.get(target.getID()));
+			return null;
+		}
+	
+		
+		// Algorithmus terminiert. extrahiere die Wegpunkte aus dem Ergebnis
+		LOGGER.info("Kuerzester Weg von " +  start.getID() + ": " + start.getVertex() +  " zum Ziel: " + target.getID() + ": " + target.getVertex() + " besitzt Laenge: " + mDistances.get(target.getID()));
+		return extractWayPointsFromShortestPath(start, target);
+	}
+	// ------------------------------------------------------------------------------------------
+	
+	// DAS KANN MAN SO NICHT TESTEN => es handelt sich hierbei nicht um den zwingend kuerzesten Weg => evtl. tatsaechlich erst am Ende validierem
+	public boolean isValid(final VertexWrapper currentVertex) {
+		
+		// vorgaenger des aktuellen Vertex
+		VertexWrapper prev = mPrevious.get(currentVertex);
+		if(prev == null) return true;
+		
+		VertexWrapper prevPrev = mPrevious.get(prev);
+		if(prevPrev == null) return true;
+		
+		// teste nun, ob die 3 Vertices auf einer Kante liegen
+		Ray testRay = new Ray(prevPrev.getVertex(), currentVertex.getVertex());
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		
+		LOGGER.info("PrevPrev: " + prevPrev.getID() + " prev: " + prev.getID() + " cur: " + currentVertex.getID());
+		
+		return !mathHelper.isPointOnRay(prev.getVertex().getPositionPtr(), testRay);
+		
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erzeugt aus dem berechneten kuerzesten Weg eine Liste mit Wegpunkten, die auf diesem passiert werden
+	 * @param start Startknoten der Berechnung
+	 * @param end Endknoten der Berechnung
+	 * @return Liste mit saemtlichen Wegpunkten auf dem Weg vom Start- zum Zielknoten
+	 */
+	private List<VertexWrapper> extractWayPointsFromShortestPath(VertexWrapper start, VertexWrapper end) {
+		
+		List<VertexWrapper> polyVerts = new ArrayList<VertexWrapper>();
+		
+		// durchlaufe die Vorgaenger, bis der Startknoten erreicht wurde
+		VertexWrapper previous = mPrevious.get(end);
+		polyVerts.add(end);
+		while(previous != start) {
+			
+			// 1. Abbruchkriterium: innerhalb des Polygons kommt ein Vertex mit Start- oder End-Label vor
+			if(previous.getLabel().contains("Start") || previous.getLabel().contains("End")) {
+				LOGGER.debug("Polygon abgelehnt wegen Start- oder Endvertex");
+				return null;
+			}
+			
+			// 2. Abbruchkriterium: mehrfach eingefuegtes Vertex
+			if(polyVerts.contains(previous)) {
+				LOGGER.debug("Polygon abgelehnt wegen doppelter Vertices.");
+				return null;
+			}
+			
+			
+			
+			polyVerts.add(previous);
+			previous = mPrevious.get(previous);
+		}
+		
+		if(polyVerts.contains(start)) {
+			LOGGER.debug("Polygon abgelehnt wegen doppelter Vertices.");
+			return null;
+		}
+		polyVerts.add(start);
+		
+		// wenn weniger als 3 Punkte extrahiert wurden, handelt es sich nicht um ein gueltiges Polygon
+		if(polyVerts.size() < 3) return null;
+		else return polyVerts;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erzeugt aus der Liste mit Wegpunkten ein Polygon und gibt dieses anschliessend zurueck
+	 * @param waypoints Wegpunkte, die als Eckpunkte innerhalb des Polygons verwendet werden
+	 * @return Polygon, das saemtliche besuchten Wegpunkte als Eckpunkte enthaelt
+	 */
+	private MyPolygon createPolyFromWaypoints(final List<VertexWrapper> waypoints) {
+		
+		// befuelle eine Liste in umgekehrter Reihenfolge
+		List<Vertex3d> polyVertsVert3d = new ArrayList<Vertex3d>(
+				waypoints.size());
+		for (int i = waypoints.size() - 1; i >= 0; i--) {
+			polyVertsVert3d.add(waypoints.get(i).getVertex());
+		}
+
+		return new MyPolygon(polyVertsVert3d);
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode markiert Kanten und Ecken fuer die nachfolgende Verarbeitung global (Kanten kommen in maximal 2 Polygonen vor) 
+	 * @param waypoints Wegpunkte, die als Eckpunkte des Polygons verwendet werden
+	 */
+	private void markEdgesForWaypointsGlobal(final List<VertexWrapper> waypoints) {
+		
+		VertexWrapper current = null, next = null;
+		int size = waypoints.size();
+		for(int i = 0; i < size; i++) {
+			current = waypoints.get(i);
+			next = waypoints.get((i + 1) % size);
+			
+			// Zaehler fuer globale Kantenbesuchsanzahl
+			incrementUsedEdgeCounter(current, next);
+		}
+	}
+	
+	// ------------------------------------------------------------------------------------------
+		/**
+		 * Methode markiert Kanten und Ecken fuer die nachfolgende Verarbeitung lokal. Dies wird verwendet um nach dem ersten Durchlauf die Kantengewichte bereits 
+		 * verfolgter Kanten zu erhoehen. Dies geschieht auch dann, wenn das Polygon selber durch das Verfahren abgelehnt wurde. Der durch die Methode erhoehte Used-Edge-Counter
+		 * wird geleert, sobald die Faceberechnungen fuer eine einzelne Kante abgeschlossen sind
+		 * @param waypoints Wegpunkte, die als Eckpunkte des Polygons verwendet werden
+		 */
+		private void markEdgesForWaypointsLocal(final List<VertexWrapper> waypoints) {
+			
+			if(waypoints == null) return;
+			VertexWrapper current = null, next = null;
+			int size = waypoints.size();
+			for(int i = 0; i < size; i++) {
+				current = waypoints.get(i);
+				next = waypoints.get((i + 1) % size);
+				
+				// inkrementiere den Counter fuer die aktuelle Kante
+				addVisit(current, next);
+			}
+		}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode inkrementiert den Zaehler innerhalb der Berechnungen fuer eine einzelne Kante. Wird verwendet,um bereits genutzte Kanten hoeher zu gewichten
+	 * @param start Startvertex der Kante
+	 * @param end Endvertex der Kante
+	 */
+	private void addVisit(VertexWrapper start, VertexWrapper end) {
+		String index = getNormalizedID(start, end);
+		Integer visits = mUsedEdges.get(index);
+		if(visits == null) visits = 0;
+		visits++;
+		mUsedEdges.put(index, visits);
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode inkrementiert den globalen Zaehler fuer die Kanten. Sobald eine Kante in zwei Polygonen vorkam, 
+	 * wird sie zur Menge der bereits verwendeten Kanten hinzugefuegt und dadurch bei den Berechnungen uebersprungen
+	 * @param start Startvertex der Kante
+	 * @param end Endvertex der Kante
+	 */
+	private void incrementUsedEdgeCounter(VertexWrapper start, VertexWrapper end) {
+		String index = getNormalizedID(start, end);
+		Integer visits = mEdgeCounter.get(index);
+		if(visits == null) visits = 0;
+		visits++;
+		mEdgeCounter.put(index, visits);
+		
+		// wenn die Kante bereits zweimal verwendet wurde, wird sie in der Hauptschleife uebersprungen
+		if(visits >= 2) mComputedEdges.add(index);
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode aktualisiert die Distanzen der Nachbarn des uebergebenen Vertex
+	 * @param vertex Vertex, dessen Nachbarn aktualisiert werden
+	 */
+	private void updateNeighbourDistances(VertexWrapper vertex) {
+		
+		List<VertexWrapper> neighbours = vertex.getNeighbours();
+		Integer currentDistance = null, newDistance = null;
+		
+		Integer vertexDistance = mDistances.get(vertex.getID());
+		VertexWrapper currentNeighbour = null;
+		
+		LOGGER.trace("Update Neighbours fuer Vertex: " + vertex.getVertex() + " Distance: " + vertex.getCurrentDistance());
+		
+		for(int i = 0; i < neighbours.size(); i++) {
+			
+			currentNeighbour = neighbours.get(i);
+			
+			// aktuelle Distanz des Nachbarn zum Startknoten holen
+			currentDistance = mDistances.get(currentNeighbour.getID());
+			
+			// potentiell kuerzere Entfernung: Weg zum Vorgaenger + Kante
+			newDistance = vertexDistance +  mWeights.get(getNormalizedID(vertex, currentNeighbour));
+				
+			// wenn der neue Weg kuerzer ist, als der bisher gespeicherte, verwende diesen
+			if(newDistance < currentDistance ) {
+				
+				// neue Distanz speichern
+				mDistances.put(currentNeighbour.getID(), newDistance);
+				
+				// Vorgaenger aktualisieren
+				mPrevious.put(currentNeighbour, vertex);
+				
+				// Distanz im Vertex selber aktualisieren
+				currentNeighbour.setCurrentDistance(newDistance);
+				
+				// zur Liste adden
+				mUnsettledNodes.add(currentNeighbour);
+				
+			}
+		}
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode initialisiert die verschiedenen waehrend der Berechnung verwendeten Mapstrukturen
+	 * @param startVert Vertex, mit dem das Verfahren startet
+	 */
+	private void initAlgorithm(final VertexWrapper start, final RayWrapper targetEdge) {
+		
+		// Mapstrukturen initialisieren
+		mDistances = new HashMap<Integer, Integer>(mVertices.size());
+		mPrevious = new HashMap<VertexWrapper, VertexWrapper>(mVertices.size());
+		
+		for(int i = 0; i < mVertices.size(); i++) {
+			
+			// aktualisiere die Distanzen der Vertices auf die Maximaldistanz
+			mVertices.get(i).setCurrentDistance(mMaxWeight);
+			mDistances.put(mVertices.get(i).getID(), mMaxWeight);
+			mPrevious.put(mVertices.get(i), null);
+		}
+		
+		// Distanz des Startknotens zu sich selber auf 0
+		mDistances.put(start.getID(), 0);
+		
+		// Kantengewichte initialisieren
+		List<VertexWrapper> neighbours = null;
+		mWeights = new HashMap<String, Integer>(mVertices.size() * 2);
+		VertexWrapper currentVertex = null, currentNeighbour = null;
+		
+		for(int i = 0; i < mVertices.size(); i++) {
+			currentVertex = mVertices.get(i);
+			neighbours = currentVertex.getNeighbours();
+			
+			for(int j = 0; j < neighbours.size(); j++) {
+				currentNeighbour = neighbours.get(j);
+				assert currentNeighbour != null: "FEHLER: Kein Nachbar gesetzt fuer Vertex " + currentVertex.getVertex();		
+				mWeights.put(getNormalizedID(currentVertex, currentNeighbour), mStandardWeight);
+			}
+		}
+		
+		// setze das Gewicht der direkten Verbindung von start auf target auf unendlich
+		mWeights.put(getNormalizedID(targetEdge.getStartVert(), targetEdge.getEndVert()), mMaxWeight);
+		
+		// erhoehe ebenfalls das Gewicht der Kante, die auf dem gleichen Strahl liegt, wie die Testkante
+		// berechne den Strahl zwischen Start und Ziel
+		neighbours = start.getNeighbours();
+		
+		/*
+		LOGGER.info("Nachbarn von Vertex: " + start.getID());
+		for(int i = 0; i < neighbours.size(); i++) LOGGER.info(i + ": " + neighbours.get(i).getID());
+		*/
+		
+		List<RayWrapper> neighbourRays = start.getRays();
+		RayWrapper curRay = null;
+		
+		for(int i = 0; i < neighbourRays.size(); i++) {
+			
+			curRay = neighbourRays.get(i);
+			
+			// wenn die gerade getestete Kante der Zielkante entspricht, fahre fort
+			if(curRay == targetEdge) continue;
+			
+			// sonst pruefe, ob die Kanten das gleiche Label besitzen => in diesem Fall sind sie parallel
+			else {
+				if(curRay.getLabel() == targetEdge.getLabel()) {
+					LOGGER.info("Gewicht erhoeht fuer Kante " + getNormalizedID(curRay.getStartVert(), curRay.getEndVert()) + ": Nachbar liegt auf gleichem Strahl");
+					
+					// erhoehe das Gewicht der Kante => dadurch soll vermieden werden, dass Strahlen ueber mehrere Segmente hinweg verfolgt werden
+					mWeights.put(getNormalizedID(curRay.getStartVert(), curRay.getEndVert()), mHalfMaxWeight);
+				}
+			}
+		}
+		
+		// und setze die Gewichte aller Kanten entsprechend ihrer Besuche hoch => jede Kante sollte nur in 2 Polygonen vorkommen => 2 Besuche <=> max Weight
+		Iterator<String> visitedEdgesIter = mUsedEdges.keySet().iterator();
+		String currentEdgeIndex = null;
+		while(visitedEdgesIter.hasNext()) {
+			currentEdgeIndex = visitedEdgesIter.next();
+			mWeights.put(currentEdgeIndex, mUsedEdges.get(currentEdgeIndex) * mHalfMaxWeight);
+		}
+		
+		
+		// Liste mit allen Knoten, fuer die noch kein kuerzester Weg gefunden
+		// wurde
+		mUnsettledNodes = new PriorityQueue<VertexWrapper>(mVertices.size(),
+				new VertexComparator());
+
+		
+		// setze die Gewichte der direkten Nachbarn auf die Kantengewichte
+		// dadurch wird die direkte Verbindung von Anfang an ausgeschlossen
+		neighbours = start.getNeighbours();
+		
+		for (int i = 0; i < neighbours.size(); i++) {
+			currentNeighbour = neighbours.get(i);
+
+			int neighbourDistance = mWeights.get(getNormalizedID(
+					start, currentNeighbour));
+			currentNeighbour.setCurrentDistance(neighbourDistance);
+			mDistances.put(currentNeighbour.getID(), neighbourDistance);
+			mPrevious.put(currentNeighbour, start);
+
+			// fuege die Nachbarn zur Liste hinzu
+			mUnsettledNodes.add(currentNeighbour);
+		}
+	}
+		
+	// ------------------------------------------------------------------------------------------
+	/** 
+	 * Comparator-Klasse fuer die Verwendung einer PriorityQueue fuer die Dijkstra-Implementation
+	 */
+	private class VertexComparator implements Comparator<VertexWrapper> {
+
+		public int compare(VertexWrapper o1, VertexWrapper o2) {
+			return o1.getCurrentDistance().compareTo(o2.getCurrentDistance());
+		}
+	}
+
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erzeugt eine normalisierte Kantenrepraesentation bei der immer der kleinere Vertexindex am Anfang steht
+	 * @param vert1 Erstes Vertex
+	 * @param vert2 Zweites Vertex
+	 * @return Index der Kante zwischen den beiden Vertices
+	 */
+	private String getNormalizedID(final VertexWrapper vert1, final VertexWrapper vert2) {
+		
+		String concatenator = "_";
+		String index = null;
+		if(vert1.getID() > vert2.getID()) index = vert2.getID() + concatenator + vert1.getID();
+		else index = vert1.getID() + concatenator + vert2.getID();
+		return index;
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode gibt alle gesetzten Gewichte aus
+	 */
+	private void printWeights() {
+		Iterator<String> weightIter = mWeights.keySet().iterator();
+		String currentID = null;
+		
+		while(weightIter.hasNext()) {
+			currentID = weightIter.next();
+			LOGGER.info(currentID + ": " + mWeights.get(currentID));
+		}
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet, ob bereits ein Polygonmittelpunkt in der Liste gespeichert wurde, der dem uebergebenen Mittelpunkt aehnelt
+	 * @param polyCenter Mittelpunkt, fuer den getestet wird, ob er bereits vorkommt
+	 * @return True, falls ein Punkt gefunden wurde, der innerhalb des Toleranzbereiches liegt, false sonst
+	 */
+	private boolean existsPoly(MyVector3f polyCenter) {
+	
+		MyVector3f cur = null, con = null;
+		Float dist = null, tol = 0.01f;
+		for(int i = 0; i < mPolyCenter.size(); i++) {
+			cur = mPolyCenter.get(i);
+			con = new MyVector3f();
+			con.sub(polyCenter, cur);
+			dist = con.length();
+			if(dist < tol) return true;
+		}
+		return false;
+		
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft saemtliche Vertices in der uebergebenen Liste und extrahiert ihre IDs. Diese werden
+	 * anschliessend sortiert und als String konkateniert.
+	 * @param waypoints Liste mit Eckpunkten 
+	 * @return String, der eine Konkatenierung der Vertex-IDs saemtlicher enthaltener Vertices darstellt
+	 */
+	private String generatePolyDescriptor(final List<VertexWrapper> waypoints) {
+		
+		List<Integer> vertIDs = new ArrayList<Integer>(waypoints.size());
+		for(int i = 0; i < waypoints.size(); i++) vertIDs.add(waypoints.get(i).getID());
+		Collections.sort(vertIDs);
+		
+		// konkatenieren
+		String connect = "_";
+		String result = "";
+		for(int i = 0; i < vertIDs.size(); i++) result += vertIDs.get(i) + connect;
+		return result;
+		
+	}
+	// ------------------------------------------------------------------------------------------
+
+
+}

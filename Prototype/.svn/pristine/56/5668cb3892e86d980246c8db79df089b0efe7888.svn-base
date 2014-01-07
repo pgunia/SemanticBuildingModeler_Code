@@ -1,0 +1,161 @@
+package semantic.building.modeler.prototype.building.footprint;
+
+import java.util.List;
+
+import semantic.building.modeler.configurationservice.model.enums.ModelCategory;
+import semantic.building.modeler.math.MyPolygon;
+import semantic.building.modeler.math.MyVector3f;
+import semantic.building.modeler.math.Plane;
+import semantic.building.modeler.math.Ray;
+import semantic.building.modeler.math.Vertex3d;
+import semantic.building.modeler.prototype.building.footprint.walldescriptor.DoorDescriptor;
+import semantic.building.modeler.prototype.building.footprint.walldescriptor.OpenWallOutsideDescriptor;
+import semantic.building.modeler.prototype.building.footprint.walldescriptor.WallDescriptor;
+import semantic.building.modeler.prototype.enums.HorizontalAlignment;
+import semantic.building.modeler.prototype.graphics.complex.AbstractComplex;
+import semantic.building.modeler.prototype.service.ObjectPositioningService;
+import semantic.building.modeler.prototype.service.PositionConfig;
+
+/**
+ * Klasse erzeugt den inneren Footprint eines Doppelantentempels
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public class DoppelantentempelFootprint extends AbstractFootprint {
+
+	/**
+	 * Konstruktor erzeugt einen Footprint fuer einen Doppelantentempel in der
+	 * uebergebenen Zielebene mit den uebergebenen Ausmassen
+	 * 
+	 * @param plane
+	 *            Zielebene, in der der Grundriss erstellt werden soll
+	 * @param length
+	 *            Laenge des Grundrisses
+	 * @param width
+	 *            Breite des Grundrisses
+	 */
+	public DoppelantentempelFootprint(final Plane plane, final double length,
+			final double width) {
+
+		// Grundstruktur des Doppelantentempels besteht aus 3 Rechtecken
+		// unterschiedlicher Proportion
+		// das vordere und hintere Rechteck ist an einer Kante offen, das
+		// vordere besitzt einen Durchgang nach hinten
+
+		// erzeuge 3 rechteckige Grundrisse mit gleicher Breite, aber
+		// unterschiedlicher Laenge
+		final RectFootprint rectVorne = new RectFootprint(plane, length * 0.2d,
+				width);
+		final RectFootprint rectMitte = new RectFootprint(plane, length * 0.6d,
+				width);
+		final RectFootprint rectHinten = new RectFootprint(plane,
+				length * 0.2d, width);
+
+		// Footprints ausrichten, werden zunaechst alle mit dem gleichen
+		// Mittelpunkt erzeugt
+		// bestimme die Achse im Startpolygon, die der Laengenachse entspricht,
+		// berechne dafuer die Ziellaenge
+		double axisLengthMitte = 0.6d * length;
+
+		boolean useLongestEdge = false;
+		if (axisLengthMitte > width) {
+			useLongestEdge = true;
+		}
+
+		// teste die Kanten des mittleren Footprints auf die gesuchten Laengen
+		final MyPolygon rectMittePoly = rectMitte.getFootprints().get(0);
+		final List<Ray> rectMittePolyRays = rectMittePoly.getRays();
+
+		Ray currentRay = null, useRay = null;
+		if (useLongestEdge) {
+			float longest = 0;
+			for (int i = 0; i < rectMittePolyRays.size(); i++) {
+				currentRay = rectMittePolyRays.get(i);
+				if (currentRay.getLength() > longest) {
+					useRay = currentRay;
+					longest = currentRay.getLength();
+				}
+			}
+		} else {
+			float shortest = Float.MAX_VALUE;
+			for (int i = 0; i < rectMittePolyRays.size(); i++) {
+				currentRay = rectMittePolyRays.get(i);
+				if (currentRay.getLength() < shortest) {
+					useRay = currentRay;
+					shortest = currentRay.getLength();
+				}
+			}
+		}
+
+		// verwende die Richtung des ausgewaehlten Strahls, um die beiden
+		// Randelemente an die Zielposition zu verschieben
+		final MyVector3f translationDirection = useRay.getDirection();
+		translationDirection.scale(-1.0f);
+		translationDirection.normalize();
+
+		// Verschiebungslaenge ist die Haelfte des mittleren Segments + Haelfte
+		// der Breite der Seitensegmente
+		double translationLength = axisLengthMitte * 0.5d
+				+ (0.5d * 0.2d * length);
+		// translationDirection.scale(translationLength);
+		translationDirection.scale((float) translationLength);
+		LOGGER.info("Translation Direction: " + translationDirection);
+
+		// erstes Polygon verschieben
+		final MyPolygon rectVornePoly = rectVorne.getFootprints().get(0);
+		List<Vertex3d> polyPoints = rectVornePoly.getVertices();
+		for (int i = 0; i < polyPoints.size(); i++) {
+			polyPoints.get(i).getPositionPtr().add(translationDirection);
+		}
+
+		mFootprints.add(rectVornePoly);
+		mFootprints.add(rectMittePoly);
+
+		// zweites Polygon verschieben
+		translationDirection.scale(-1.0f);
+		MyPolygon rectHintenPoly = rectHinten.getFootprints().get(0);
+		polyPoints = rectHintenPoly.getVertices();
+		for (int i = 0; i < polyPoints.size(); i++)
+			polyPoints.get(i).getPositionPtr().add(translationDirection);
+		mFootprints.add(rectHintenPoly);
+
+		// Beziehungsdatensatzes aufbauen
+		// offene Waende rechts und links, Edge-Indices beginnen bei 0
+		WallDescriptor connection = new OpenWallOutsideDescriptor(
+				rectVornePoly, 3);
+		mFootprintConnections.add(connection);
+		connection = new OpenWallOutsideDescriptor(rectHintenPoly, 1);
+		mFootprintConnections.add(connection);
+
+		// Verbindung zwischen vorderen Polygon und Mitte durch Tuer
+		final PositionConfig posConf = new PositionConfig();
+		posConf.setVertAlign(HorizontalAlignment.CENTER);
+		posConf.setModelCategory(ModelCategory.Portal);
+		posConf.setLowerBorderObjectToQuadRatio(0.75f);
+		posConf.setUpperBorderObjectToQuadRatio(0.75f);
+
+		// Lade das Portal-Modell und speichere es in der PositionConfig
+		AbstractComplex portal = ObjectPositioningService.getInstance()
+				.getModelByCategory(ModelCategory.Portal);
+		posConf.setComponent(portal);
+
+		connection = new DoorDescriptor(rectVornePoly, rectMittePoly, 1, 3,
+				posConf);
+		// connection = new DoorDescriptor(rectMittePoly, rectHintenPoly, 1, 3,
+		// posConf);
+		mFootprintConnections.add(connection);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "DoppelantentempelFootprint";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

@@ -1,0 +1,878 @@
+package semantic.building.modeler.prototype.building;
+
+import java.util.ArrayList;
+import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.log4j.Logger;
+
+import processing.core.PApplet;
+import semantic.building.modeler.configurationservice.model.FloorConfiguration;
+import semantic.building.modeler.configurationservice.model.IBuildingConfiguration;
+import semantic.building.modeler.configurationservice.model.ObjectPlacementFootprintConfiguration;
+import semantic.building.modeler.configurationservice.model.enums.FloorPosition;
+import semantic.building.modeler.configurationservice.model.enums.ReuseFloorEnum;
+import semantic.building.modeler.configurationservice.model.enums.Side;
+import semantic.building.modeler.math.MyPolygon;
+import semantic.building.modeler.math.MyVector3f;
+import semantic.building.modeler.math.MyVectormath;
+import semantic.building.modeler.math.Ray;
+import semantic.building.modeler.math.Vertex3d;
+import semantic.building.modeler.objectplacement.controller.ObjectPlacementController;
+import semantic.building.modeler.objectplacement.model.AbstractComponent;
+import semantic.building.modeler.prototype.algorithm.FootprintCreator;
+import semantic.building.modeler.prototype.building.footprint.AbstractFootprint;
+import semantic.building.modeler.prototype.graphics.complex.AbstractComplex;
+import semantic.building.modeler.prototype.graphics.complex.BuildingComplex;
+import semantic.building.modeler.prototype.graphics.complex.FloorComplex;
+import semantic.building.modeler.prototype.graphics.complex.IndoorFloorComplex;
+import semantic.building.modeler.prototype.graphics.primitives.AbstractQuad;
+import semantic.building.modeler.prototype.graphics.primitives.Line;
+import semantic.building.modeler.prototype.graphics.primitives.Quad;
+import semantic.building.modeler.prototype.graphics.primitives.Triangle;
+import semantic.building.modeler.prototype.roof.configuration.FixedRoofWeightConfiguration;
+import semantic.building.modeler.prototype.service.EdgeManager;
+import semantic.building.modeler.prototype.service.TextureManagement.TextureCategory;
+
+/**
+ * Basisklasse fuer Gebaeudebeschreibungen
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public abstract class AbstractBuilding {
+
+	/** LOGGER */
+	protected static Logger LOGGER = Logger.getLogger(AbstractBuilding.class);
+
+	/** Liefert die Typbezeichnung der Komponente */
+	abstract public String getType();
+
+	/** Methode erzeugt das Zielgebaeude basierend auf den Vorgabeparametern */
+	abstract public void create();
+
+	/** Instanz der Konfigurationsdatei fuer das betreffende Gebaeude */
+	protected IBuildingConfiguration mConf = null;
+
+	/** Gebaeude, das durch die Klassen erzeugt wird */
+	protected BuildingComplex mBuilding = null;
+
+	/** Innerer Grundriss des Gebaeudes bsw. fuer Raeume */
+	protected AbstractFootprint mInnerFootprint = null;
+
+	/** Aeusserer Grundriss des Gebaeudes, definiert die Aussenmauern */
+	protected AbstractFootprint mOuterFootprint = null;
+
+	/** Position des Gebaeudes */
+	protected MyVector3f mPosition = null;
+
+	/**
+	 * Map speichert die vorab verwendeten Grundrisse, damit diese
+	 * wiederverwendet werden koennen
+	 */
+	protected Map<ReuseFloorEnum, MyPolygon> mReuseFloorMap = new EnumMap<ReuseFloorEnum, MyPolygon>(
+			ReuseFloorEnum.class);
+
+	/** Gebaeudeparameter bzgl. Audehnungen etc. */
+	protected BuildingDimensions mDimensions = null;
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * 
+	 * Standardkonstruktor
+	 * 
+	 * @param applet
+	 *            Drawing Context
+	 * @param position
+	 *            Position des Gebaeudes
+	 * @param Instanz
+	 *            einer Gebaeudekonstruktionsklasse
+	 */
+	public AbstractBuilding(final PApplet applet, final MyVector3f position,
+			final IBuildingConfiguration buildingConf) {
+		mPosition = position;
+		mConf = buildingConf;
+		mBuilding = new BuildingComplex(applet);
+		mBuilding.create();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Getter fuer die Building-Komponente
+	 * 
+	 * @return Konstruiertes Gebaeude
+	 */
+	public BuildingComplex getBuilding() {
+		return mBuilding;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erzeugt ein Dach fuer das Gebauede. Die Konfiguration des Dachs
+	 * wird dabei aus der Konfigurationsdatei geladen. Sofern der uebergebene
+	 * Scaling-Factor != 1 ist, wird der Dachgrundriss gegenuber der obersten
+	 * Etage skaliert
+	 * 
+	 * @param filename
+	 *            Dateiname der Dachkonfigurationsdatei
+	 * @param roofScaling
+	 *            Skalierungsfaktor, sofern der Dachgrundriss skaliert werden
+	 *            soll
+	 */
+	protected void addRoof() {
+
+		// Initialisierung des Weight-Managers fuer das aktuelle Gebaeude
+		final FixedRoofWeightConfiguration weightManager = new FixedRoofWeightConfiguration(
+				mConf.getRoof());
+
+		mBuilding.computeRoof(weightManager);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode laedt eine Konfigurationsdatei fuer die Footprintmodifikation,
+	 * deren Namen uebergeben wird Konfigurationsparametern, um unter Verwendung
+	 * der Placementkomponente den uebergebenen Grundriss zu modifizieren
+	 * 
+	 * @param sourcePoly
+	 *            Eingabegrundriss beschrieben durch ein Polygon
+	 * @param configFilename
+	 *            Dateiname der Konfigurationsdatei, die die Steuerparameter
+	 *            fuer die Footprintmodifikation enthaelt
+	 * @return Modifizierte Variante des Eingabegrundrisses
+	 */
+	protected MyPolygon modifyFootprint(final MyPolygon sourcePoly,
+			final ObjectPlacementFootprintConfiguration placementConfig) {
+
+		boolean isFootprint = true;
+		ObjectPlacementController placementController = new ObjectPlacementController(
+				sourcePoly.getVertices(), placementConfig, isFootprint);
+
+		// erzeuge Subkomponenten, der Eingabefootprint fungiert als
+		// MainComponent
+		placementController.modifyExsitingFootprint();
+
+		boolean useConvexHull = MyVectormath.getInstance().decide(
+				placementConfig.getProbConvexHull());
+		return extractFootprintFromPlacementLogic(
+				placementController.getComponents(), useConvexHull);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erzeugt aus den Berechnungsergebnissen der Placementlogic einen
+	 * Grundriss. Dabei sind die Positionierungsberechnungen bereits
+	 * abgeschlossen. Diese Methode ist nur dafuer zustaendig, die
+	 * positionierten Komponenten zu sammeln und daraus entweder per
+	 * FootprintMerger oder ConvexHull ein Polygon zu extrahieren. Dieses wird
+	 * an den Aufrufer zurueckgereicht.
+	 * 
+	 * @param placementController
+	 *            Placementcontroller, der
+	 * @param useConvexHull
+	 *            Flag, das angibt, ob zur Berechnung des Grundrisspolygons das
+	 *            ConvexHull-Verfahren eingesetzt werden soll
+	 * @return Grundrisspolygon
+	 */
+	private MyPolygon extractFootprintFromPlacementLogic(
+			final List<AbstractComponent> components, boolean useConvexHull) {
+
+		int size = components.size();
+		assert components.size() > 0 : "FEHLER: Es wurden keine Komponenten uebergeben.";
+		LOGGER.debug("#Erzeugte Gebaeudekomponenten: " + components.size());
+
+		// wenn nur eine Komponente zurueckkommt, dann gebe diese ohne weitere
+		// Rechnungen zurueck
+		if (size == 1) {
+			return components.get(0).getPolygon();
+		}
+
+		// erzeuge ueber den FootprintCreator einen gemergten Grundriss aus den
+		// Rueckgabekomponenten
+		FootprintCreator footprintCreator = new FootprintCreator();
+
+		// fuege die Polygone aller zurueckgegebenen Komponenten in den
+		// Creator-Bucket ein
+		footprintCreator.addComponents(components);
+		List<List<Vertex3d>> footprintOutlines = footprintCreator
+				.process(useConvexHull);
+
+		// aufgrund der Modifikation eines bestehenden Grundrisses sollte das
+		// Ergebnis jeweils nur genau einen Ergebnisgrundriss enthalten
+		assert footprintOutlines.size() > 0 : "FEHLER: Bei der Modifikation des Eingabegrundrisses wurden "
+				+ footprintOutlines.size() + " Polygone erzeugt!";
+
+		String newLine = System.getProperty("line.separator");
+		String message = newLine;
+		List<Vertex3d> outlineVerts = footprintOutlines.get(0);
+		for (int i = 0; i < outlineVerts.size(); i++) {
+			message += "mVertices.add(new Vertex3d("
+					+ outlineVerts.get(i).getX() + "f, "
+					+ outlineVerts.get(i).getY() + "f, "
+					+ outlineVerts.get(i).getZ() + "f));" + newLine;
+		}
+		LOGGER.debug(message);
+
+		MyPolygon result = new MyPolygon(footprintOutlines.get(0));
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuehrt automatisiert verschiedene Berechnungsschritte durch, die
+	 * bei allen Arten von Gebaeuden relevant sind Berechnung von Waenden,
+	 * Daechern, Texturkoordinaten, Tesselation etc.
+	 */
+	protected void finalizeBuilding() {
+
+		// fuege ein Dach hinzu
+		addRoof();
+
+		// Fuege Waende mit der vorgegebenen Wandstaerke ein => fuer diesen
+		// Gebauedetyp unnoetig => fuehrt an Bodenflaechen zu z-Fighting
+		// insetWalls(mBuilding, mConf.getDimensions().getWallThickness());
+
+		// tesseliere das Gebaeude
+		mBuilding.tesselate();
+
+		// berechne durchgaengige Quads ueber Stockwerksgrenzen hinweg
+		mBuilding.computePolyQuadsForContiguousBaseQuads();
+
+		// setze Wandtexturen
+		mBuilding.setTextureByCategory(TextureCategory.Wall);
+
+		// berechne die Texturkoordinaten
+		mBuilding.computeTextureCoordinates();
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode berechnet basiernd auf den vorab festgelegten Stockwerkshoehen
+	 * und der Gebauedehoehe die Anzahl an zu konstrutierenden Stockwerken
+	 * 
+	 * @param buildingHeight
+	 *            Hoehe des gesamten Gebauede
+	 * @param floorHeights
+	 *            Map mit den Hoehen der Stockwerke abhaengig von der
+	 *            Stockwerksposition
+	 * @return Gesamtanzahl an Stockwerken
+	 */
+	protected Integer getNumberOfFloors(final Float buildingHeight,
+			final Map<FloorPosition, Float> floorHeights) {
+
+		// werden unterschiedliche Stockwerkshoehen verwendet?
+		// wenn eine ALL-Position als Key enthalten ist, werden alle Stockwerke
+		// mit identischer Hoehe gebaut
+		if (floorHeights.containsKey(FloorPosition.ALL)) {
+
+			Float floorHeight = floorHeights.get(FloorPosition.ALL);
+			return (int) Math.floor(buildingHeight / floorHeight);
+
+		}
+		// sonst muessen unterschiedliche Stockwerkshoehen bzgl. der Stockwerke
+		// beruecksichtigt werden
+		else {
+
+			// hole GROUND und TOP-Floor-Hoehen
+			Float groundFloorHeight = floorHeights.get(FloorPosition.GROUND);
+			Float topFloorHeight = floorHeights.get(FloorPosition.TOP);
+
+			assert groundFloorHeight != null && topFloorHeight != null : "FEHLER: Erdgeschosshoehe: "
+					+ groundFloorHeight
+					+ " Dachgeschosshoehe: "
+					+ topFloorHeight;
+
+			Float intermediateFloorHeight = floorHeights
+					.get(FloorPosition.INTERMEDIATE);
+			if (intermediateFloorHeight == null) {
+				intermediateFloorHeight = 0.0f;
+			}
+			float restHeight = buildingHeight - groundFloorHeight
+					- topFloorHeight;
+
+			// nur Erd- und Dachgeschoss
+			if (intermediateFloorHeight == 0.0f) {
+				return 2;
+			} else {
+				// Erd- + Dachgeschoss + Anzahl Zwischengeschosse
+				return (int) (2 + Math.ceil(restHeight
+						/ intermediateFloorHeight));
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode berechnet die Stockwerkshoehen basierend auf den
+	 * Stockwerkskonfigurationen. Dies ist erforderlich, da Stockwerkshoehen
+	 * innerhalb einer Range angegeben werden koennen. Aus dieser Range wird
+	 * zufallsbasiert ein Wert ausgewahelt. Da Stockwerke innerhalb eines
+	 * Gebauedes konstante Hoehen haben sollten (zumindest die
+	 * INTERMEDIATE-Stockwerke), muessen die Hoehen zu Beginn einmal berechnet
+	 * werden.
+	 * 
+	 * @param floorConfigs
+	 *            Stockwerkskonfigurationen
+	 * @return Map, die fuer jede Stockwerksposition die Stockwerkshoehe
+	 *         speichert
+	 */
+	protected Map<FloorPosition, Float> getFloorHeights(
+			final Map<FloorPosition, FloorConfiguration> floorConfigs) {
+
+		final Map<FloorPosition, Float> result = new EnumMap<FloorPosition, Float>(
+				FloorPosition.class);
+		final Iterator<FloorPosition> floorIter = floorConfigs.keySet()
+				.iterator();
+		FloorConfiguration curFloor = null;
+		FloorPosition curFloorPosition = null;
+		Float curHeight = null;
+		while (floorIter.hasNext()) {
+			curFloorPosition = floorIter.next();
+
+			LOGGER.info("POS: " + curFloorPosition);
+			curFloor = floorConfigs.get(curFloorPosition);
+
+			curHeight = curFloor.getHeight().getRandValueWithinRange();
+			result.put(curFloorPosition, curHeight);
+		}
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode erzeugt ein Stockwerk basierend auf den Uebergabeparametern
+	 * 
+	 * @param footprint
+	 *            Grundriss des Stockwerks
+	 * @param curHeight
+	 *            Aktuelle Gebaeudehoehe
+	 * @param floorHeight
+	 *            Stockwerkshoehe
+	 * @param floorPosition
+	 *            Position des Stockwerks
+	 * @return Neue Hoehe nach dem Hinzufuegen des
+	 */
+	protected Float createFloor(final MyPolygon footprint,
+			final Float curHeight, final Float floorHeight,
+			final FloorPosition floorPosition) {
+
+		LOGGER.trace("Footprint-Position: " + footprint.getCenter()
+				+ " Cur-Height: " + curHeight + " Floor-Height: " + floorHeight);
+
+		int floorIndex = mBuilding.getFloors().size();
+		final MyPolygon clonedFootprint = footprint.clone();
+
+		// uebergebenes Polygon beschreibt immer die Bodenflaeche des Stockwerks
+		boolean isTop = false;
+		final FloorComplex floor = new FloorComplex(mBuilding.getParent(),
+				clonedFootprint, floorHeight,
+				mBuilding.getNormalToDirectionMap(), floorPosition, floorIndex,
+				isTop);
+
+		// Positionsvektor des Gebauedes
+		final MyVector3f newPosition = mPosition.clone();
+		LOGGER.trace("New Pos: " + newPosition);
+
+		// Hoehenverschiebung
+		final MyVector3f heightTranslation = footprint.getNormal();
+
+		LOGGER.trace(heightTranslation);
+
+		heightTranslation.scale(curHeight);
+		newPosition.add(heightTranslation);
+
+		// erzeuge das Stockwerk
+		floor.create();
+		floor.translate(newPosition);
+		floor.update();
+		mBuilding.addComplex(floor);
+
+		LOGGER.info("Added Floor " + floor.getID() + " at position: "
+				+ floorPosition);
+
+		return curHeight + floorHeight;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet Innenwaende fuer das uebergebene Gebauede, deren
+	 * Staerke durch den uebergebenen Parameter gesteuert wird
+	 * 
+	 * @param objectCreationService
+	 *            TODO
+	 * @param wallThickness
+	 *            Wanstaerke
+	 */
+	public void insetWalls(final Float wallThickness) {
+
+		// hole alle Floors
+		List<FloorComplex> floors = mBuilding.getFloors();
+		FloorComplex currentFloor = null;
+
+		for (int i = 0; i < floors.size(); i++) {
+			currentFloor = floors.get(i);
+			insetFloor(currentFloor, wallThickness);
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode durchlaeuft alle Footprints des aktuellen Floors und ruft fuer
+	 * jeden vorhandenen Footprint die Inset-Berechnungen auf
+	 * 
+	 * @param floor
+	 *            Stockwerk, fuer das die Inset-Berechnungen durchgefuehrt
+	 *            werden sollen
+	 * @param wallThickness
+	 *            Wandbreite
+	 */
+	private void insetFloor(final FloorComplex floor, final float wallThickness) {
+
+		final List<Vertex3d> verts = floor.getVertices();
+		final List<AbstractQuad> outdoorQuads = floor.getOutdoorQuads();
+		// for(int i = 0; i < verts.size(); i++) System.out.println(i + ": " +
+		// verts.get(i));
+
+		// berechne Translationsvektoren fuer die Footprintvertices des
+		// aktuellen Floors
+		final Map<Vertex3d, MyVector3f> vertexTranslations = new HashMap<Vertex3d, MyVector3f>();
+		vertexTranslations.putAll(insetFootprint(floor.getFootprint(), floor,
+				wallThickness));
+
+		// falls ein Indoor-Floor gesetzt ist, berechne auch fuer dessen
+		// Vertices die Translationsvektoren
+		if (floor.hasIndoor()) {
+			IndoorFloorComplex indoor = floor.getIndoor();
+			List<MyPolygon> indoorFootprints = indoor.getFootprintComponents();
+			for (int i = 0; i < indoorFootprints.size(); i++) {
+				vertexTranslations.putAll(insetFootprint(
+						indoorFootprints.get(i), indoor, wallThickness));
+			}
+
+			// fuege die Outdoor-Quads des Indoor-Objekts hinzu
+			outdoorQuads.addAll(indoor.getOutdoorQuads());
+		}
+
+		AbstractQuad currentQuad = null;
+		List<Vertex3d> quadVerts = null, clonedVerts = null;
+		MyVector3f translation = null;
+		AbstractQuad clone = null;
+		Vertex3d prevVert = null, nextVert = null, upperEdgeVert = null;
+		int numberOfTranslations;
+		String quadDirection = null;
+
+		// alle Quads des Objekts durchlaufen und mittels der berechneten
+		// Translationsvektoren insetten
+		for (int i = 0; i < outdoorQuads.size(); i++) {
+			numberOfTranslations = 0;
+			currentQuad = outdoorQuads.get(i);
+			quadDirection = currentQuad.getDirection().toString();
+
+			// TOP und BOTTOM-Quads werden geskippt
+			if (quadDirection.contains("TOP")
+					|| quadDirection.contains("BOTTOM"))
+				continue;
+			quadVerts = currentQuad.getQuadVertices();
+			clone = currentQuad.clone(currentQuad.getComplexParent());
+			clonedVerts = new ArrayList<Vertex3d>(quadVerts.size());
+
+			// erstelle Kopien der Vertices
+			for (int j = 0; j < quadVerts.size(); j++) {
+				clonedVerts.add(quadVerts.get(j).clone());
+			}
+
+			for (int j = 0; j < quadVerts.size(); j++) {
+				translation = vertexTranslations.get(quadVerts.get(j));
+				if (translation != null) {
+
+					// Vertex um Translation verschieben (Index ist wegen Clone
+					// identisch)
+					clonedVerts.get(j).getPositionPtr().add(translation);
+
+					// Vertex auf der zweiten vertikalen Kante bestimmen und um
+					// den gleichen Vektor verschieben
+					// da es sich bei Seitenwaenden immer um "Standard-Quads"
+					// handelt, ist das gesuchte Vertex entweder Vorgaenger oder
+					// Nachfolger des aktuellen Vertex
+					// da aber eines der beiden Vertices ebenfalls in der Map
+					// sein muss, kann man darueber testen, welches das gesuchte
+					// Vertex ist
+					if (j == 0)
+						prevVert = quadVerts.get(quadVerts.size() - 1);
+					else
+						prevVert = quadVerts.get(j - 1);
+					nextVert = quadVerts.get((j + 1) % quadVerts.size());
+
+					if (vertexTranslations.containsKey(prevVert))
+						upperEdgeVert = nextVert;
+					else
+						upperEdgeVert = prevVert;
+
+					int upperEdgeIndex = quadVerts.indexOf(upperEdgeVert);
+					clonedVerts.get(upperEdgeIndex).getPositionPtr()
+							.add(translation);
+					numberOfTranslations++;
+				}
+			}
+			LOGGER.debug("Verschiebungen: " + numberOfTranslations);
+			// assert numberOfTranslations == 2: "FEHLER: Es wurden nur " +
+			// numberOfTranslations + " Verschiebungen durchgefuehrt!";
+
+			// fuege die verschobenen Vertices zum gebaeudeglobalen Vertexbuffer
+			// hinzu
+			verts.addAll(clonedVerts);
+			Integer[] indices = new Integer[clonedVerts.size()];
+			int currentIndex = -1;
+
+			// aktualisiere die Indices des aktuellen Quads
+			for (int j = 0; j < clonedVerts.size(); j++) {
+				currentIndex = verts.indexOf(clonedVerts.get(j));
+				assert currentIndex != -1 : "FEHLER: Vertex "
+						+ clonedVerts.get(j)
+						+ " wurde nicht zum Vertexbuffer hinzugefuegt!";
+				indices[j] = currentIndex;
+			}
+
+			clone.setIndices(indices);
+			clone.setIndoor(true);
+
+			// Indices drehen
+			clone.flipIndices();
+
+			// Verarbeitung der Loecher innerhalb der Quads, falls solche
+			// vorkommen
+			// Loecher werden nicht skaliert und darum einfach um die Wandbreite
+			// verschoben
+			if (clone.hasHoles()) {
+
+				// Quadnormale holen
+				translation = currentQuad.getNormal();
+				translation.scale(-wallThickness);
+				List<AbstractQuad> holes = clone.getHoles();
+				AbstractQuad currentHole = null;
+				List<Vertex3d> holeVerts = null;
+				Vertex3d currentVert = null;
+
+				for (int j = 0; j < holes.size(); j++) {
+					currentHole = holes.get(j);
+					holeVerts = currentHole.getQuadVertices();
+					clonedVerts = new ArrayList<Vertex3d>(holeVerts.size());
+					// erzeuge Kopien der Quads, die das Loch beschreiben
+					for (int k = 0; k < holeVerts.size(); k++) {
+						currentVert = holeVerts.get(k).clone();
+						currentVert.getPositionPtr().add(translation);
+						clonedVerts.add(currentVert);
+					}
+
+					// zum Parent-Buffer adden
+					verts.addAll(clonedVerts);
+					indices = new Integer[clonedVerts.size()];
+
+					// indices updaten
+					for (int k = 0; k < clonedVerts.size(); k++) {
+						currentIndex = verts.indexOf(clonedVerts.get(k));
+						assert currentIndex != -1 : "FEHLER: Vertex "
+								+ clonedVerts.get(k)
+								+ " wurde nicht zum Vertexbuffer hinzugefuegt!";
+						indices[k] = currentIndex;
+					}
+
+					currentHole.setIndices(indices);
+					currentHole.flipIndices();
+					currentHole.setIndoor(true);
+				}
+			}
+
+			clone.tesselate();
+			clone.update();
+			currentQuad.getComplexParent().addIndoorQuad(clone);
+			createWallConnectionsForQuad(currentQuad, wallThickness);
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuegt an "offenen" Stellen weitere Quads ein, damit ein
+	 * geschlossener Wandzug entsteht. Dies ist bsw. bei ausgeschnittenen
+	 * Fenstern etc. erforderlich
+	 * 
+	 * @param sourceQuad
+	 *            Quad, das im Zuge der Wanderzeugung gecloned wird, falls eine
+	 *            Verbindung erzeugt werden muss, verbindet diese Quelle und
+	 *            Clone
+	 * @param wallThickness
+	 *            Breite der Wand
+	 */
+	private void createWallConnectionsForQuad(AbstractQuad sourceQuad,
+			Float wallThickness) {
+
+		// LOGGER.error(sourceQuad.getComplexParent().getEdgeManager().toString());
+		// LOGGER.error("QUAD-DIRECTION: " + sourceQuad.getDirection());
+
+		// bestimme nicht geteilte Kanten
+		List<Line> unsharedEdges = getUnsharedEdges(sourceQuad);
+
+		// LOGGER.error("#UNSHARED EDGES: " + unsharedEdges.size());
+
+		// wenn keine ungeteilte Kante gefunden wurde, breche ab, in diesem Fall
+		// muss kein neues Quad erzeugt werden
+		if (unsharedEdges.size() == 0)
+			return;
+
+		MyVector3f translation = sourceQuad.getNormal();
+		translation.scale(-wallThickness);
+
+		List<Vertex3d> verts = sourceQuad.getVertices();
+		Line currentLine = null;
+		Integer[] lineIndices = null;
+		Vertex3d currentVert = null, currentVertClone = null;
+		Integer[] newQuadIndices = new Integer[4];
+		int index = -1;
+		Quad quad = null;
+		AbstractComplex complexParent = sourceQuad.getComplexParent();
+		boolean addedQuad = false;
+
+		// erzeuge aus jeder nicht geteilten Kante ein Quad, dessen Breite der
+		// Wandbreite entspricht
+		for (int i = 0; i < unsharedEdges.size(); i++) {
+			currentLine = unsharedEdges.get(i);
+			lineIndices = currentLine.getIndices();
+			newQuadIndices[0] = lineIndices[0];
+			currentVert = verts.get(lineIndices[0]);
+
+			// verschieben
+			currentVertClone = currentVert.clone();
+			currentVertClone.getPositionPtr().add(translation);
+			index = verts.indexOf(currentVertClone);
+			if (index == -1) {
+				verts.add(currentVertClone);
+				index = verts.indexOf(currentVertClone);
+			}
+			newQuadIndices[1] = index;
+
+			// naechste Seite
+			currentVert = verts.get(lineIndices[1]);
+			currentVertClone = currentVert.clone();
+			currentVertClone.getPositionPtr().add(translation);
+			index = verts.indexOf(currentVertClone);
+			if (index == -1) {
+				verts.add(currentVertClone);
+				index = verts.indexOf(currentVertClone);
+			}
+			newQuadIndices[2] = index;
+			newQuadIndices[3] = lineIndices[1];
+
+			quad = new Quad();
+			quad.setComplexParent(complexParent);
+			quad.setIndices(newQuadIndices);
+			quad.setDirection(Side.UNKNOWN);
+			quad.tesselate();
+
+			// UNKLAR, OB INDOOR ODER OUTDOOR-QUAD
+			// eher Indoor-Quad, da es sich um innenliegende Waende handelt, die
+			// nicht durchgaengig texturiert werden
+			complexParent.addIndoorQuad(quad);
+			addedQuad = true;
+		}
+
+		if (addedQuad) {
+			complexParent.alignDirectionsByNormals(
+					complexParent.getNormalToDirectionMap(),
+					complexParent.getIndoorQuads());
+			String direction = null;
+			Iterator<AbstractQuad> quadIter = complexParent.getIndoorQuads()
+					.iterator();
+			AbstractQuad currentQuad = null;
+			while (quadIter.hasNext()) {
+				currentQuad = quadIter.next();
+				direction = currentQuad.getDirection().toString();
+				if (direction.contains("TOP") || direction.contains("BOTTOM"))
+					quadIter.remove();
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode ermittelt ueber den Edge-Manager des komplexen Parentobjekts, ob
+	 * das Quad Kanten enthaelt, die nur von einem einzigen Element verwendet
+	 * werden
+	 * 
+	 * @return Liste mit allen Line-Instanzen, die nur von einem Dreieck
+	 *         referenziert werden
+	 */
+	private List<Line> getUnsharedEdges(AbstractQuad sourceQuad) {
+
+		List<Line> unsharedEdges = new ArrayList<Line>();
+		List<Triangle> triangles = sourceQuad.getTriangles();
+		Triangle currentTri = null;
+		Line[] lines = null;
+		Line currentLine = null;
+		int numberOfReferences = 0;
+
+		// HIER IM ZWEIFELSFALL TESTEN, OB DER RICHTIGE MANAGER GELADEN WIRD
+		// SCHEINT KORREKT ZU FUNKTIONIEREN
+		EdgeManager edgeManager = sourceQuad.getComplexParent()
+				.getEdgeManager().get(0);
+		for (int i = 0; i < triangles.size(); i++) {
+			currentTri = triangles.get(i);
+			lines = currentTri.getEdges();
+			for (int k = 0; k < lines.length; k++) {
+				currentLine = lines[k];
+				numberOfReferences = edgeManager
+						.getEdgeReferenceCount(currentLine.getIndex());
+				// LOGGER.error("EDGE-Index: " + currentLine.getIndex() +
+				// " #Ref: " + numberOfReferences);
+				if (numberOfReferences == 1)
+					unsharedEdges.add(currentLine);
+			}
+		}
+		return unsharedEdges;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuehrt die Inset-Berechnungen auf der Ebene der einzelnen
+	 * Grundrisse durch
+	 * 
+	 * @param footprint
+	 *            Grundriss, fuer den die Berechnung durchgefuehrt wird
+	 * @param floor
+	 *            Stockwerk, zu dem der Grundriss gehoert
+	 * @param wallThickness
+	 *            Wandbreite
+	 * @return Map-Struktur mit Zurodnungen von Vertices zu
+	 *         Verschiebungsvektoren
+	 */
+	private Map<Vertex3d, MyVector3f> insetFootprint(MyPolygon footprint,
+			AbstractComplex floor, float wallThickness) {
+
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		List<EdgeManager> edgeManagers = floor.getEdgeManager();
+
+		assert edgeManagers.size() == 1 : "FEHLER: Das verarbeitete Stockwerk besitzt "
+				+ edgeManagers.size() + " Edge-Manager!";
+		EdgeManager edgeManager = edgeManagers.get(0);
+
+		LOGGER.debug(footprint);
+		LOGGER.debug(edgeManager);
+
+		List<Ray> footprintRays = footprint.getRays();
+		Map<Vertex3d, MyVector3f> resultMap = new HashMap<Vertex3d, MyVector3f>(
+				footprint.getVertices().size());
+
+		// Pythagoras => Berechnung der Skalierung bei Verwendung der
+		// Winkelhalbierenden
+		Float winkelhalbierendeScale = (float) Math.sqrt(Math.pow(
+				wallThickness, 2) * 2);
+
+		Ray currentRay = null, nextRay = null;
+		String rayIndexCurrent = null, rayIndexNext = null;
+		for (int i = 0; i < footprintRays.size(); i++) {
+			currentRay = footprintRays.get(i);
+
+			LOGGER.debug("TESTE KANTE: " + currentRay);
+			// befindet sich der Strahl im Edge-Manager?
+			rayIndexCurrent = edgeManager.getEdgeIndexByRay(currentRay);
+			LOGGER.debug("INDEX: " + rayIndexCurrent);
+			// if(rayIndexCurrent == null) continue;
+			nextRay = footprintRays.get((i + 1) % footprintRays.size());
+
+			// befindet sich der naechste Strahl im EdgeManager?
+			rayIndexNext = edgeManager.getEdgeIndexByRay(nextRay);
+
+			MyVector3f translation = null;
+
+			// Vertex besitzt 2 adjazente Kanten => Verschiebungsvektor
+			// errechnet sich als Winkelhalbierende der beiden Kanten
+			if (rayIndexCurrent != null && rayIndexNext != null) {
+				MyVector3f rotatedCurrent = currentRay.getDirection();
+				rotatedCurrent.scale(-1.0f);
+				Ray currentRotatedRay = new Ray(currentRay.getEnd(),
+						rotatedCurrent);
+				translation = mathHelper.calculateWinkelhalbierende(
+						currentRotatedRay, nextRay);
+				assert translation != null : "FEHLER: Es konnte keine Winkelhalbierende berechnet werden!";
+
+				// wenn es sich um einen stumpfen Winkel handelt, muss die
+				// Winkelhalbierende gedreht werden, da das System die
+				// Winkelhalbierende immer am spitzen Winkel bestimmt
+				double angleRad = mathHelper.getFullAngleRad(
+						currentRotatedRay.getDirection(),
+						nextRay.getDirection());
+				if (angleRad > Math.PI)
+					translation.scale(-1.0f);
+
+				// auf Laenge skalieren
+				translation.normalize();
+				translation.scale(winkelhalbierendeScale);
+				resultMap.put(nextRay.getStartVertex(), translation);
+				LOGGER.debug("Winkelhalbierende: " + translation);
+			}
+			// Vertex besitzt nur eine adjazente Kante, Verschiebungsvektor
+			// entspricht der gedrehten Quad-Normalen
+			else {
+				List<Vertex3d> edgeVerts = new ArrayList<Vertex3d>(2);
+
+				if (rayIndexCurrent == null) {
+					edgeVerts.add(nextRay.getStartVertex());
+					edgeVerts.add(nextRay.getEndVertex());
+				} else if (rayIndexNext == null) {
+					edgeVerts.add(currentRay.getStartVertex());
+					edgeVerts.add(currentRay.getEndVertex());
+				}
+				// beide Kanten kommen nicht mehr im Edge-Manager vor => dann
+				// braucht man auch keine Translation fuer das Vertex
+				else
+					continue;
+
+				AbstractQuad quad = floor.getQuadByVertices(edgeVerts);
+				translation = quad.getNormal();
+				translation.scale(-wallThickness);
+				resultMap.put(currentRay.getEndVertex(), translation);
+				LOGGER.debug("Standard: " + translation);
+			}
+		}
+		return resultMap;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet Innenwaende fuer das uebergebene Gebauede, deren
+	 * Staerke durch den uebergebenen Parameter gesteuert wird
+	 * 
+	 * @param building
+	 *            Gebauede, innerhalb dessen Waende einer vorgegebenen Staerke
+	 *            erzeugt werden sollen
+	 * @param wallThickness
+	 *            Wanstaerke
+	 */
+	public void insetWalls(final BuildingComplex building,
+			final Float wallThickness) {
+
+		// hole alle Floors
+		List<FloorComplex> floors = building.getFloors();
+		FloorComplex currentFloor = null;
+
+		for (int i = 0; i < floors.size(); i++) {
+			currentFloor = floors.get(i);
+			insetFloor(currentFloor, wallThickness);
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

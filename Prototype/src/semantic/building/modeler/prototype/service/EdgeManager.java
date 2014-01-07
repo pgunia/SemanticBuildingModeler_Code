@@ -1,0 +1,572 @@
+package semantic.building.modeler.prototype.service;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.log4j.Logger;
+
+import semantic.building.modeler.math.MyVectormath;
+import semantic.building.modeler.math.Ray;
+import semantic.building.modeler.math.Vertex3d;
+import semantic.building.modeler.prototype.exception.PrototypeException;
+import semantic.building.modeler.prototype.graphics.complex.AbstractComplex;
+import semantic.building.modeler.prototype.graphics.primitives.AbstractPrimitive;
+import semantic.building.modeler.prototype.graphics.primitives.Line;
+import semantic.building.modeler.prototype.graphics.primitives.Triangle;
+
+/**
+ * @author Patrick Gunia Klasse dient der Verwaltung von Kanten in einem
+ *         komplexen Gafikobjekt Sie speichert Edges, die sich von verschiedenen
+ *         Primitiven geteilt werden weiterhin fuehrt sie ein Reference-Counting
+ *         durch, um nicht mehr verwendete Kanten entfernen zu koennen
+ */
+public class EdgeManager implements Cloneable {
+
+	/** Index-Line-HashMap */
+	private Map<String, Line> mEdges = null;
+
+	/** Reference-Counter fuer die Lines im Manager */
+	private Map<String, Integer> mReferenceCounter = null;
+
+	/**
+	 * Parent-Edge-Referenzen, speichert fuer jede Line alle Triangles, die
+	 * diese enthalten
+	 */
+	private Map<String, List<AbstractPrimitive>> mEdgeParentReferences = null;
+
+	/** Logger-Instanz */
+	private static Logger LOGGER = Logger.getLogger(EdgeManager.class);
+
+	/** Referenz auf komplexes Parent-Objekt */
+	private AbstractComplex mParent = null;
+
+	/** Wird aufgebaut, wenn Anfragen ueber Vertices gestellt werden */
+	private Map<String, Ray> mRayRepresentation = null;
+
+	/**
+	 * Flag zeigt an, ob die Ray-Repraesentation aufgrund von Veraenderungen am
+	 * Manager neu gebaut werden muss
+	 */
+	private boolean isDirty = true;
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor mit Uebergabe des komplexen Parent-Objektes
+	 */
+	public EdgeManager(AbstractComplex parent) {
+		mParent = parent;
+		init();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor ohne Uebergabe, wird nur bei Clone-Operationen verwendet
+	 */
+	private EdgeManager() {
+		init();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	private void init() {
+		mEdges = new HashMap<String, Line>();
+		mReferenceCounter = new HashMap<String, Integer>();
+		mEdgeParentReferences = new HashMap<String, List<AbstractPrimitive>>();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode leert alle verwendeten Datenstrukturen des Edge-Managers und
+	 * setzt diese zurueck
+	 */
+	public void clear() {
+		mEdges.clear();
+		mEdges = null;
+
+		mReferenceCounter.clear();
+		mReferenceCounter = null;
+
+		mEdgeParentReferences.clear();
+		mEdgeParentReferences = null;
+
+		if (mRayRepresentation != null) {
+			mRayRepresentation.clear();
+			mRayRepresentation = null;
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode zum Adden einer Line zur Verwaltungsstruktur wenn die Line noch
+	 * nicht existiert, wird sie neu erzeugt anschliessend wird eine Referenz
+	 * auf sie zurueckgegeben Per Vorgabe wird davon ausgegangen, dass der Index
+	 * so strukturiert ist, dass der erste Index immer kleiner als der zweite
+	 * Index ist
+	 * 
+	 * @param index
+	 *            Konkatenierter Kantenindex definiert durch die Indices des
+	 *            Anfangs- und Endvertex
+	 * @return Zeiger auf die Kante mit dem gesuchten Index
+	 */
+	public Line getEdge(String index, AbstractPrimitive parent) {
+
+		if (index == null) {
+			try {
+				throw new PrototypeException(
+						"Line.getEdge: Aufruf mit undefiniertem Index");
+			} catch (PrototypeException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			return null;
+		}
+
+		// wenn die Line existiert, gib sie zurueck
+		if (mEdges.containsKey(index)) {
+
+			// erhoehe den Reference-Counter fuer diese Line
+			Integer counter = mReferenceCounter.get(index);
+			counter++;
+			mReferenceCounter.put(index, counter);
+
+			List<AbstractPrimitive> parents = mEdgeParentReferences.get(index);
+			assert parents != null : "FEHLER: Fuer Kante " + index
+					+ " existiert kein Mapping in der Parent-Map, aber "
+					+ counter + " Referenzierungen!";
+			if (!parents.contains(parent)) {
+				parents.add(parent);
+				mEdgeParentReferences.put(index, parents);
+			}
+			assert counter == parents.size() : "FEHLER: Inkosistenter Zustand des Edge-Managers: Index: "
+					+ index
+					+ " #Ref: "
+					+ counter
+					+ " #Parent: "
+					+ parents.size();
+			LOGGER.debug("Line aus dem Edge-Manager zurueckgeliefert, Index: "
+					+ index);
+
+			return mEdges.get(index);
+		}
+
+		// die Line existiert noch nicht, erzeuge eine neue leere Line und gebe
+		// eine Referenz darauf zurueck
+		Line result = new Line();
+
+		// speichere den Index in der Line
+		result.setIndex(index);
+
+		// fuege die Line zum Verwaltungsarray und zum Reference-Counter hinzu
+		mEdges.put(index, result);
+		mReferenceCounter.put(index, 1);
+
+		List<AbstractPrimitive> parents = new ArrayList<AbstractPrimitive>();
+		parents.add(parent);
+
+		mEdgeParentReferences.put(index, parents);
+		isDirty = true;
+
+		LOGGER.debug("Neue Line erzeugt und zum Edge-Manager hinzugefuegt, Index: "
+				+ index);
+
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public Map<String, Line> getEdges() {
+		return mEdges;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public Map<String, Integer> getReferenceCounter() {
+		return mReferenceCounter;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuegt ein Index-Counter-Pair zum Edge-Manager hinzu
+	 * 
+	 * @param index
+	 *            Index der Kante, fuer die das Pair hinzugefuegt wird
+	 * @param count
+	 *            Anzahl der Referenzen auf diese Kante
+	 */
+	private void addReferencePair(String index, Integer count) {
+		if (!mReferenceCounter.containsKey(index)) {
+			mReferenceCounter.put(index, new Integer(count));
+			isDirty = true;
+		} else {
+			new PrototypeException(
+					"EdgeManager.addReferencePair: Der uebergebene Index "
+							+ index
+							+ " wurde bereits zur Referenz-Verwaltung hinzugefuegt");
+			return;
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet, ob fuer den uebergebenen Index bereits eine Kante
+	 * verwaltet wird
+	 * 
+	 * @param index
+	 *            Index der Kante, fuer die ueberprueft wird, ob sie bereits
+	 *            durch den Edge-Manager verwaltet wird
+	 */
+	public Boolean containsEdge(String index) {
+
+		if (mEdges.containsKey(index))
+			return true;
+		else
+			return false;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erstellt eine Deep-Copy aller Kanten im Edge-Manager sowie
+	 * saemtlicher Verwaltungsstrukturen etc.
+	 * 
+	 * @return Deep-Copy der Edge-Manager-Instanz
+	 */
+	@Override
+	public EdgeManager clone() {
+		EdgeManager result = new EdgeManager();
+		Line tempLine = null;
+		Line tempLine2 = null;
+		Line newLine = null;
+
+		// iteriere über sämtliche Kanten, die aktuell im Edge-Manager
+		// gespeichert sind
+		// und speichere sie im neuen Edge-Manager
+		Iterator<String> keys = mEdges.keySet().iterator();
+		while (keys.hasNext()) {
+
+			// lege fuer die Parent-Line eine Instanz im Edge-Manager an
+			tempLine = mEdges.get(keys.next());
+
+			newLine = new Line();
+			newLine.setIndex(tempLine.getIndex());
+
+			result.addEdge(newLine);
+
+			// uebertrage die Indices auf die neue Line
+			newLine.addLinePoint(tempLine.getIndices()[0]);
+			newLine.addLinePoint(tempLine.getIndices()[1]);
+
+		}
+
+		// durchlaufe erneut alle Lines im alten Edge-Manager, um die
+		// Parent-Child-Beziehungen zu kopieren
+		// da jede Line (auch Kind-Lines) gespeichert sind, muss kein rekursiver
+		// Ansatz verwendet werden, man
+		// updated immer nur die direkte Eltern-Kind-Beziehung
+		keys = mEdges.keySet().iterator();
+
+		while (keys.hasNext()) {
+			tempLine = mEdges.get(keys.next());
+
+			if (tempLine.hasChildren()) {
+
+				// hole die korrespondierende Line in der Quell-Map
+				Line parent = result.getEdges().get(tempLine.getIndex());
+
+				Line[] childBuffer = tempLine.getChildren();
+
+				// erstes Kind verarbeiten
+				tempLine2 = childBuffer[0];
+
+				// hole die zum Kind korrespondierende Line im neuen EdgeManager
+				Line child1 = result.getEdges().get(tempLine2.getIndex());
+
+				// fuege die gefundene Kante als Kind der neu erzeugten Line
+				// hinzu
+				parent.addChildLine(child1);
+
+				// zweites Kind verarbeiten
+				tempLine2 = childBuffer[1];
+				Line child2 = result.getEdges().get(tempLine2.getIndex());
+				parent.addChildLine(child2);
+
+			} else
+				continue;
+		}
+
+		// und gebe den neu erzeugten EdgeManager zurueck
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert alle gespeicherten Eltern fuer eine Kante, die ueber den
+	 * uebergebenen Index gesucht wird
+	 * 
+	 * @param index
+	 *            Index der Line im EdgeManager, deren Eltern gesucht werden
+	 * @return Vector mit allen AbstractPrimitive-Instanzen, die eine Referenz
+	 *         auf diese Line speichern
+	 */
+	public List<AbstractPrimitive> getParentsForEdgeByIndex(String index) {
+
+		if (mEdgeParentReferences.containsKey(index)) {
+			return mEdgeParentReferences.get(index);
+		}
+
+		return new ArrayList<AbstractPrimitive>();
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode wird nur bei Clone-Operationen des Edge-Managers aufgerufen,
+	 * fuegt dem Edge-Manager eine Line hinzu und initialisiert die zugehoerigen
+	 * Count- und Parent-Strukturen
+	 */
+	private void addEdge(Line line) {
+		mEdges.put(line.getIndex(), line);
+
+		// zu diesem Zeitpunkt existieren noch keine Verweise auf die Line
+		mReferenceCounter.put(line.getIndex(), 0);
+		mEdgeParentReferences.put(line.getIndex(),
+				new ArrayList<AbstractPrimitive>());
+		isDirty = true;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @return the mParent
+	 */
+	public AbstractComplex getParent() {
+		return mParent;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mParent
+	 *            the mParent to set
+	 */
+	public void setParent(AbstractComplex mParent) {
+		this.mParent = mParent;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert den Index einer Kante aus dem EdgeManager anhand von
+	 * Uebergabevertices. Es wird eine Kante gesucht, die parallel zur Kante
+	 * verlaeuft, die durch die Uebergabevertices definiert und mindestens eines
+	 * der beiden Vertices enthaelt. Wird eine solche Kante gefunden, wird ihr
+	 * Index zurueckgeliefert
+	 * 
+	 * @param vert1
+	 *            Eingabevertex1
+	 * @param vert2
+	 *            Eingabevertex2
+	 * @return Index der Kante innerhalb des Edge-Managers, falls eine Kanet
+	 *         gefunden wird, NULL sonst
+	 */
+	public String getEdgeIndexByVertices(Vertex3d vert1, Vertex3d vert2) {
+		Ray ray = new Ray(vert1, vert2);
+		return getEdgeIndexByRay(ray);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert den Edge-Index der Kante innerhalb des EdgeManagers, die
+	 * durch den uebergebenen Strahl repraesentiert wird, sofern eine solche
+	 * Kante im Manager vorhanden ist
+	 * 
+	 * @param ray
+	 *            Strahl, fuer den eine Line-Repraesentation innerhalb des
+	 *            Managers gesucht wird
+	 * @return Index der Kante im Edge-Manager, falls die Kante vorhanden ist,
+	 *         null sonst
+	 */
+	public String getEdgeIndexByRay(Ray ray) {
+
+		if (mRayRepresentation == null || isDirty)
+			createRayRepresentation();
+		MyVectormath mathHelper = MyVectormath.getInstance();
+
+		// Iteriere ueber die Ray-Repraesentationen
+		String currentKey = null;
+		Iterator<String> keyIter = mRayRepresentation.keySet().iterator();
+		Ray currentRay = null;
+		while (keyIter.hasNext()) {
+			currentKey = keyIter.next();
+			currentRay = mRayRepresentation.get(currentKey);
+
+			// teste zunaechst, ob die Strahlen parallel sind
+			// WAS GIBT DIE METHODE ZURUECK, WENN DIE STRAHLEN UNTERSCHIEDLICHE
+			// RICHTUNGEN HABEN?
+			if (mathHelper.isParallel(currentRay.getDirection(),
+					ray.getDirection())) {
+
+				// wenn ja, pruefe, ob einer der uebergebenen Punkte auf dem
+				// Strahl liegt
+				if (mathHelper.isPointOnRay(ray.getStartVertex().getPosition(),
+						currentRay)
+						|| mathHelper.isPointOnRay(ray.getEndVertex()
+								.getPosition(), currentRay))
+					return currentKey;
+			}
+		}
+		return null;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erstellt eine Ray-Struktur fuer jede Line im EdgeManager
+	 */
+	private void createRayRepresentation() {
+
+		assert mParent != null : "FEHLER: Es ist kein Parent gesetzt";
+		List<Vertex3d> mVertices = mParent.getVertices();
+
+		mRayRepresentation = new HashMap<String, Ray>();
+
+		Set<String> keySet = mEdges.keySet();
+
+		// durchlaufe alle Keys innerhalb des Managers und erzeuge fuer jede
+		// Line-Instanz, die selber nicht Kind einer
+		// Line-Instanz ist (also nicht fuer Subdivision-Lines) eine Ray-Instanz
+		String currentKey = null;
+		Line currentLine = null;
+
+		Vertex3d start = null, end = null;
+		Ray currentRay = null;
+		Iterator<String> keyIter = keySet.iterator();
+		while (keyIter.hasNext()) {
+			currentKey = keyIter.next();
+			currentLine = mEdges.get(currentKey);
+
+			start = mVertices.get(currentLine.getIndices()[0]);
+			end = mVertices.get(currentLine.getIndices()[1]);
+			currentRay = new Ray(start, end);
+			mRayRepresentation.put(currentKey, currentRay);
+		}
+		isDirty = false;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	/**
+	 * Methode wird vor der endgueltigen Zerstoerung durch den GC gecallt
+	 */
+	protected void finalize() throws Throwable {
+		LOGGER.info("Zerstoere EdgeManager von ComplexParent "
+				+ mParent.getID());
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/*
+	 * (non-Javadoc)
+	 * 
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		String lineSeparator = System.getProperty("line.separator");
+		if (mRayRepresentation == null || isDirty)
+			createRayRepresentation();
+
+		String result = lineSeparator;
+		String key = null;
+		Ray ray = null;
+
+		Set<String> keySet = mRayRepresentation.keySet();
+		Iterator<String> keyIter = keySet.iterator();
+
+		while (keyIter.hasNext()) {
+			key = keyIter.next();
+			ray = mRayRepresentation.get(key);
+			result += "Index: " + key + " Ray: " + ray + " #References: "
+					+ mReferenceCounter.get(key) + lineSeparator;
+		}
+
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode entfernt Kanten aus dem EdgeManager, sofern diese nicht mehr
+	 * referenziert werden, sonst werden die Referenzen auf das Parent-Triangle
+	 * heruntergezaehlt und die Beziehungen innerhalb der HashMaps aufgeloest
+	 * 
+	 * @param triangle
+	 *            Dreieck, dessen Kanten aus dem EdgeManager entfernt werden
+	 *            sollen
+	 */
+
+	public void removeTriangleEdgesFromManager(Triangle triangle) {
+		isDirty = true;
+		Line[] edges = triangle.getEdges();
+		Line currentEdge = null;
+		Integer referenceCount = -1;
+		String edgeID = null;
+		List<AbstractPrimitive> parentTriangles = null;
+		for (int i = 0; i < edges.length; i++) {
+
+			// teste zunaechst die Anzahl von Referenzen auf die aktuelle Kante
+			currentEdge = edges[i];
+			if (currentEdge == null)
+				continue;
+
+			edgeID = currentEdge.getIndex();
+
+			// wenn die Kante nicht im Edge-Manager vorkommt, scheint es einen
+			// inkosistenten Zustand zu geben, entferne die Kante aus allen
+			// Verwaltungsstrukturen
+			if (!mEdges.containsKey(edgeID)) {
+				mReferenceCounter.remove(edgeID);
+				mEdgeParentReferences.remove(edgeID);
+				continue;
+			}
+
+			referenceCount = mReferenceCounter.get(edgeID);
+			referenceCount--;
+			mReferenceCounter.put(edgeID, referenceCount);
+
+			// wenn keine Referenzen mehr vorhanden sind, entferne die Kante aus
+			// der Verwaltung
+			if (referenceCount == 0) {
+				mReferenceCounter.remove(edgeID);
+				mEdges.remove(edgeID);
+			}
+
+			// entferne die Referenz zwischen Triangle und Kante
+			parentTriangles = mEdgeParentReferences.get(edgeID);
+			parentTriangles.remove(triangle);
+
+			if (parentTriangles.size() == 0) {
+				mEdgeParentReferences.remove(edgeID);
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert die Anzahl der Referenzierungen der Edge mit dem
+	 * uebergebenen Index, sofern diese im Manager verwaltet wird
+	 * 
+	 * @param index
+	 *            Index der Kante
+	 * @return Anzahl der Referenzierungen
+	 */
+	public int getEdgeReferenceCount(String index) {
+		// assert
+		// containsEdge(index):"FEHLER: Der Edge-Manager enthaelt keine Kante mit Index "
+		// + index;
+		if (!containsEdge(index))
+			return 0;
+		else
+			return mReferenceCounter.get(index);
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

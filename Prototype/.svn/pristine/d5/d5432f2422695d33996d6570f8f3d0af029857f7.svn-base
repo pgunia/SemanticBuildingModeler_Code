@@ -1,0 +1,80 @@
+package semantic.building.modeler.prototype.service;
+
+import java.util.HashSet;
+import java.util.Random;
+import java.util.Set;
+
+/**
+ * @author Patrick Gunia Klasse zur automatischen Generierung von Identifiern
+ *         Singleton-Implementation
+ */
+public class IdentifierService {
+
+	private static IdentifierService instance = null;
+
+	/**
+	 * wird verwendet, um den Fall abzudecken, dass zufaellig zwei IDs zum
+	 * gleichen Zeitpunkt angefordert werden
+	 */
+	private Set<Long> usedIDs = null;
+
+	/** zufallsgenerator zur Steuerung der ID-Generierung */
+	private Random generator;
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * verteckter Default-Konstruktor
+	 */
+	private IdentifierService() {
+
+		usedIDs = new HashSet<Long>();
+		generator = new Random();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/** Singleton-Getter */
+	public static IdentifierService getInstance() {
+		if (instance == null)
+			instance = new IdentifierService();
+		return instance;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * generiert eine ID basierend auf der aktuellen Uhrzeit in Millisekunden
+	 */
+	public String generate() {
+
+		Long longID = System.currentTimeMillis();
+
+		// so lange das Element noch nicht eingefuegt werden konnte
+		// variiere den Wert um eine Zufallszahl und versuche erneut, ihn
+		// einzufuegen
+		while (!usedIDs.add(longID)) {
+
+			Long mod = generator.nextLong();
+			// sorge dafuer, dass die ID immer positiv ist
+			if (mod >= longID) {
+				mod -= longID;
+			} else {
+				longID -= mod;
+			}
+			longID = mod;
+		}
+
+		// gib den generierten Wert zurueck
+		return longID.toString();
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Zuruecksetzen der Instanz
+	 */
+	public void reset() {
+		usedIDs.clear();
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

@@ -1,0 +1,406 @@
+package semantic.city.builder.objectplacement.controller;
+
+import java.awt.Color;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Random;
+
+import processing.core.PApplet;
+import processing.core.PConstants;
+import semantic.city.builder.configurationservice.controller.ConfigurationController;
+import semantic.city.builder.configurationservice.model.ObjectPlacementFootprintConfiguration;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.Vertex3d;
+import semantic.city.builder.objectplacement.algorithm.ContentType;
+import semantic.city.builder.objectplacement.algorithm.Quadtree;
+import semantic.city.builder.objectplacement.algorithm.QuadtreeNode;
+import semantic.city.builder.objectplacement.model.AbstractComponent;
+
+public class ObjectPlacementApplet extends PApplet {
+
+	private ObjectPlacementController mPlacementController = null;
+
+	/**
+	 * Fuer jedes Level wird eine Farbe festgelegt, in der Rechtecke auf dieser
+	 * Ebene gezeichnet werden
+	 */
+	private HashMap<Integer, Color> levelColors = null;
+
+	/** Steuervariablen fuer das Mouse-Dragging */
+	private float dragLastPosX = 0.0f;
+
+	private float dragTreshold = 0.05f;
+
+	private float dragRotateX = 0.0f;
+
+	private float dragDelta = 0.05f;
+
+	private float dragLastPosY = 0.0f;
+
+	private float dragRotateY = 0.0f;
+
+	private boolean drawMarker = true;
+
+	private boolean drawComponents = true;
+
+	private boolean drawVertices = true;
+
+	private boolean drawGrid = true;
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void setup() {
+		size(1000, 700, PConstants.OPENGL);
+		background(255);
+		/*
+		 * List<Vertex3d> corners = new ArrayList<Vertex3d>();
+		 * 
+		 * corners.add(new Vertex3d(111.20344f, 500.0f, -85.51887f));
+		 * corners.add(new Vertex3d(288.79657f, 500.0f, -85.51887f));
+		 * corners.add(new Vertex3d(288.79657f, 500.0f, -51.539795f));
+		 * corners.add(new Vertex3d(332.90265f, 500.0f, -51.539795f));
+		 * corners.add(new Vertex3d(332.90265f, 500.0f, 51.539795f));
+		 * corners.add(new Vertex3d(288.79657f, 500.0f, 51.539787f));
+		 * corners.add(new Vertex3d(288.79657f, 500.0f, 85.51887f));
+		 * corners.add(new Vertex3d(111.20344f, 500.0f, 85.51887f));
+		 * 
+		 * 
+		 * corners.add(new Vertex3d(54.94874f, 500.0f, -47.823616f));
+		 * corners.add(new Vertex3d(86.64116f, 500.0f, -47.823616f));
+		 * corners.add(new Vertex3d(86.64116f, 500.0f, -75.26568f));
+		 * corners.add(new Vertex3d(136.26247f, 500.0f, -75.26568f));
+		 * corners.add(new Vertex3d(136.26247f, 500.0f, -100.78125f));
+		 * corners.add(new Vertex3d(263.73752f, 500.0f, -100.78125f));
+		 * corners.add(new Vertex3d(263.73752f, 500.0f, -75.26568f));
+		 * corners.add(new Vertex3d(313.35883f, 500.0f, -75.26568f));
+		 * corners.add(new Vertex3d(313.35883f, 500.0f, 75.26568f));
+		 * corners.add(new Vertex3d(86.64116f, 500.0f, 75.26568f));
+		 * corners.add(new Vertex3d(86.64116f, 500.0f, 47.82361f));
+		 * corners.add(new Vertex3d(54.94874f, 500.0f, 47.82361f));
+		 */
+
+		List<Vertex3d> corners = new ArrayList<Vertex3d>();
+		/*
+		 * corners.add(new Vertex3d(-200.0f, -150.0f,0.0f)); corners.add(new
+		 * Vertex3d(200.0f, -150.0f, 0.0f)); corners.add(new Vertex3d(200.0f,
+		 * 150.0f, 0.0f)); corners.add(new Vertex3d(-200.0f, 150.0f, 0.0f));
+		 */
+
+		/*
+		 * corners.add(new Vertex3d(-200.0f, 0.0f, -150.0f)); corners.add(new
+		 * Vertex3d(200.0f, 0.0f, -150.0f)); corners.add(new Vertex3d(200.0f,
+		 * 0.0f, 150.0f)); corners.add(new Vertex3d(-200.0f, 0.0f, 150.0f));
+		 */
+
+		corners.add(new Vertex3d(-600.0f, 0.0f, -350.0f));
+		corners.add(new Vertex3d(0.0f, 0.0f, -350.0f));
+		corners.add(new Vertex3d(0.0f, 0.0f, 350.0f));
+		corners.add(new Vertex3d(-600.0f, 0.0f, 350.0f));
+
+		// File xmlConfiguration = new File("ressource/Config/CityExample.xml");
+		// assert xmlConfiguration.exists():
+		// "FEHLER: Konfigurationsdatei wurde nicht gefunden!";
+		ConfigurationController confController = new ConfigurationController();
+		File xmlConfiguration = confController
+				.loadFromURL(
+						"https://raw.github.com/pgunia/SemanticCityBuilder/master/XML/ObjectPlacement/Jugendstil_ObjectPlacement.xml",
+						"Config/ObjectPlacementConfig.xml");
+		ObjectPlacementFootprintConfiguration config = confController
+				.processsObjectPlacementConfiguration(xmlConfiguration);
+		mPlacementController = new ObjectPlacementController(corners, config);
+		// mPlacementController.positionMainComponent();
+		// mPlacementController.computeComponents();
+
+		/*
+		 * Map<String, Float> probabilities = new HashMap<String, Float>();
+		 * probabilities.put("symmetrie", 0.0f);
+		 * probabilities.put("positionSubComponentsOnCorners", 0.0f);
+		 * probabilities.put("positionCylinders", 0.1f);
+		 * probabilities.put("positionComponentsOnEdge", 0.7f);
+		 * probabilities.put("positionOnCenter", 1.0f);
+		 * 
+		 * Map<String, Float> placementConfig = new HashMap<String, Float>();
+		 * 
+		 * placementConfig.put("maxNumberOfSubcomponentsPerRay", 1.0f);
+		 * placementConfig.put("minSubComponentSizeInBlocks", 2.0f);
+		 * placementConfig.put("maxSubMainComponentWidthRatio", 0.5f);
+		 * 
+		 * mPlacementController = new ObjectPlacementController(corners,
+		 * placementConfig, probabilities);
+		 */
+		levelColors = new HashMap<Integer, Color>();
+		Random rand = new Random();
+
+		// erzeuge zufallsbasierte Farben fuer die verschiedenen Levels
+		for (int i = 0; i < 10; i++) {
+			Color currentColor = new Color(rand.nextInt(255),
+					rand.nextInt(255), rand.nextInt(255), 100);
+			levelColors.put(i, currentColor);
+		}
+
+		MyVector3f blickrichtung = new MyVector3f(0.0f, -500.0f, 0.0f);
+		MyVector3f cameraPosition = new MyVector3f(0.0f, 0.0f, 0.0f);
+		MyVector3f cameraUp = new MyVector3f(1.0f, 0.0f, 0.0f);
+		camera(blickrichtung.x, blickrichtung.y, blickrichtung.z,
+				cameraPosition.x, cameraPosition.y, cameraPosition.z,
+				cameraUp.x, cameraUp.y, cameraUp.z);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void draw() {
+
+		background(255);
+		stroke(0);
+		fill(100, 100, 100, 10);
+		translate(300, 300, 0);
+		rotateX(-dragRotateY);
+		rotateY(dragRotateX);
+
+		Quadtree tree = mPlacementController.getTree();
+
+		/*
+		 * List<QuadtreeNode> currentNodes = new ArrayList<QuadtreeNode>();
+		 * List<QuadtreeNode> currentChildrenNodes = new
+		 * ArrayList<QuadtreeNode>(); currentNodes.add(tree.getRoot());
+		 * 
+		 * // Ausnahme fuer Wurzel, damit diese auch gezeichnet wird
+		 * currentChildrenNodes.add(tree.getRoot());
+		 * 
+		 * 
+		 * // zeichne den Quadtree while(true) {
+		 * 
+		 * for(int i = 0; i < currentNodes.size(); i++) {
+		 * currentChildrenNodes.addAll(currentNodes.get(i).getChildren()); }
+		 * 
+		 * drawNodes(currentChildrenNodes);
+		 * 
+		 * // breche ab, wenn keine Kinder mehr gefunden wurden if(!
+		 * (currentChildrenNodes.size() > 0)) break;
+		 * 
+		 * 
+		 * // Kindknoten zu Current machen, naechste Ebene einleiten
+		 * currentNodes.clear(); currentNodes.addAll(currentChildrenNodes);
+		 * currentChildrenNodes.clear();
+		 * 
+		 * }
+		 */
+
+		// zeichne immer nur die Blaetter
+		List<QuadtreeNode> leafs = tree.getRoot().getLeafs();
+		drawNodes(leafs);
+
+		// zeichne die platzierten Komponenten
+		List<AbstractComponent> components = null;
+		List<Vertex3d> points = null;
+
+		AbstractComponent currentComponent = null;
+		MyVector3f currentPoint = null;
+		Vertex3d current = null;
+
+		if (drawComponents) {
+			components = mPlacementController.getComponents();
+			Iterator<AbstractComponent> componentIter = components.iterator();
+
+			while (componentIter.hasNext()) {
+				currentComponent = componentIter.next();
+				points = currentComponent.getVertices();
+				beginShape();
+				pushStyle();
+				fill(255, 0, 0, 90);
+				for (int i = 0; i < points.size(); i++) {
+					currentPoint = points.get(i).getPositionPtr();
+					vertex(currentPoint.x, currentPoint.y, currentPoint.z);
+				}
+				popStyle();
+				endShape(PConstants.CLOSE);
+			}
+		}
+
+		if (drawVertices) {
+
+			components = mPlacementController.getComponents();
+			for (int i = 0; i < components.size(); i++) {
+				currentComponent = components.get(i);
+				points = currentComponent.getVertices();
+
+				// zeichne alle Vertices als Kugeln
+				for (int j = 0; j < points.size(); j++) {
+					current = points.get(j);
+
+					pushMatrix();
+					pushStyle();
+					noStroke();
+
+					if (j == 0)
+						fill(255, 0, 0);
+					else if (j == 1)
+						fill(0, 0, 255);
+					else
+						fill(0, 0, 0);
+
+					currentPoint = current.getPositionPtr();
+					translate(currentPoint.x, currentPoint.y, currentPoint.z);
+					sphere(2);
+
+					popStyle();
+					popMatrix();
+
+				}
+			}
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode zeichnet alle uebergebenen Nodes des Quadtrees als
+	 * Quad-Strukturen
+	 * 
+	 * @param nodes
+	 *            Liste mit allen zu zeichnenden Tree-Nodes
+	 */
+	private void drawNodes(List<QuadtreeNode> nodes) {
+
+		Iterator<QuadtreeNode> nodeIter = nodes.iterator();
+		QuadtreeNode current = null;
+		List<Vertex3d> corners = null;
+
+		if (nodes.size() < 1)
+			return;
+
+		// hole das Level aus den Knoten
+		Integer currentLevel = nodes.get(0).getLevel();
+		Color currentColor = levelColors.get(currentLevel);
+		MyVector3f currentPosition = null;
+
+		beginShape(PConstants.QUAD);
+
+		// stroke(255);
+		while (nodeIter.hasNext()) {
+			current = nodeIter.next();
+			corners = current.getPolygon().getVertices();
+			pushStyle();
+			if (drawMarker) {
+
+				if (current.getContentType().equals(ContentType.CORNER)) {
+					fill(0, 0, 255);
+				} else if (current.getContentType().equals(ContentType.EDGE)) {
+					fill(255, 0, 0);
+				} else if (current.getContentType().equals(ContentType.INSIDE)) {
+					fill(0, 255, 0);
+				} else if (current.getContentType().equals(ContentType.OUTSIDE)) {
+					fill(255, 255, 0);
+				}
+
+				else if (current.getContentType().equals(ContentType.FULL)) {
+					fill(255, 0, 255);
+				}
+
+				else {
+					// fill(currentColor.getRed(), currentColor.getGreen(),
+					// currentColor.getBlue(), currentColor.getAlpha());
+				}
+
+			}
+
+			if (drawGrid) {
+				for (int i = 0; i < corners.size(); i++) {
+					currentPosition = corners.get(i).getPositionPtr();
+					vertex(currentPosition.x, currentPosition.y,
+							currentPosition.z);
+				}
+			}
+			popStyle();
+
+		}
+
+		endShape();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public void keyPressed() {
+
+		switch (key) {
+		case 'm':
+			mPlacementController.positionMainComponent();
+			break;
+		case 's':
+			mPlacementController.getTree().printStatistics();
+			break;
+		case 'u':
+			mPlacementController.modifyExsitingFootprint();
+			break;
+		case 'c':
+			if (drawComponents)
+				drawComponents = false;
+			else
+				drawComponents = true;
+			break;
+		case 'a':
+			mPlacementController.computeComponents();
+			break;
+		case 'q':
+			if (drawMarker)
+				drawMarker = false;
+			else
+				drawMarker = true;
+			;
+			break;
+		case 'v':
+			if (drawVertices)
+				drawVertices = false;
+			else
+				drawVertices = true;
+			break;
+		case 'g':
+			if (drawGrid)
+				drawGrid = false;
+			else
+				drawGrid = true;
+			break;
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode dient der Reaktion auf Mauseingaben. Die Methode wird automatisch
+	 * von der Parent-PApplet-Klasse aufgerufen, sobald Mausbewegungen
+	 * festgestellt werden
+	 */
+	@Override
+	public void mouseDragged() {
+		if (dragLastPosX > mouseX + dragTreshold) {
+			dragRotateX += dragDelta;
+		} else if (dragLastPosX < mouseX - dragTreshold) {
+			dragRotateX -= dragDelta;
+		}
+
+		// normalisiere auf Bereich 0-360°
+		if (dragRotateX > 720.0f || dragRotateX < -360.0f)
+			dragRotateX = 0.0f;
+
+		if (dragLastPosY > mouseY + dragTreshold) {
+			dragRotateY += dragDelta;
+		} else if (dragLastPosX < mouseY - dragTreshold) {
+			dragRotateY -= dragDelta;
+		}
+
+		if (dragRotateY > 720.0f || dragRotateY < -360.0f)
+			dragRotateY = 0.0f;
+
+		// speichere Positionen des aktuellen Frames
+		dragLastPosX = mouseX;
+		dragLastPosY = mouseY;
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

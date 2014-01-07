@@ -1,0 +1,30 @@
+<fp:footprint src="ExampleBased" xmlns="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Building"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:fp="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Footprint"
+    xsi:schemaLocation="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Footprint http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Footprint/FootprintSchema.xsd">
+	<fp:exampleBased>
+		<fp:ExampleSource>
+			<fp:ExampleClass>RectFootprint</fp:ExampleClass>
+		</fp:ExampleSource>
+		<fp:FirstComponentType>INSIDE</fp:FirstComponentType>
+		<fp:CornerCount>1</fp:CornerCount>
+		<fp:ReflexCornerCount>1</fp:ReflexCornerCount>
+		<fp:EdgeCount>-1</fp:EdgeCount>
+		<fp:InsideCount>-1</fp:InsideCount>
+		<fp:OutsideCount>-1</fp:OutsideCount>
+		<fp:RandomComponentChoice>true</fp:RandomComponentChoice>
+		<fp:RandomStateChoice>true</fp:RandomStateChoice>
+		<fp:ConsistencyConstraint>true</fp:ConsistencyConstraint>
+		<fp:OnlyRayComponents>false</fp:OnlyRayComponents>
+		<fp:OnlyVertexComponents>false</fp:OnlyVertexComponents>
+		<fp:CornerVoteBoost>8</fp:CornerVoteBoost>
+		<fp:ReflexCornerVoteBoost>6</fp:ReflexCornerVoteBoost>
+		<fp:EdgeVoteBoost>1</fp:EdgeVoteBoost>
+		<fp:OutsideVoteBoost>1</fp:OutsideVoteBoost>
+		<fp:InsideVoteBoost>1</fp:InsideVoteBoost>
+		<fp:NumberOfParallelRays>8</fp:NumberOfParallelRays>
+		<fp:ParallelRayDistance>157.23</fp:ParallelRayDistance>
+		<fp:ParallelRayDistanceRuleComputation>17.93</fp:ParallelRayDistanceRuleComputation>
+		<fp:RandomGrowth>false</fp:RandomGrowth>
+	</fp:exampleBased>
+</fp:footprint>

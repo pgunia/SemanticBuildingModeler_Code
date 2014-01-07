@@ -1,0 +1,145 @@
+package skeletonAlgorithm;
+
+import math.MyVector3f;
+
+public abstract class AbstractEvent implements iStraightSkeletonEvent{
+	
+	/** Ausloesendes Vertex des Events */
+	protected SkeletonVertex mVertex;
+
+	/** Punkt, an dem das Event ausgeloest wurde, bei Split- und Edge-Events ein Schnittpunkt */
+	protected MyVector3f mSchnittpunkt;
+
+	/** Distanz, je nach Event etwas anders berechnet, aber Sortierungsgrundlage */
+	protected float mDistance;
+	
+	/** Distanz zwischen Schnittpunkt und Vertex */
+	protected float mShrinkDistance;
+	
+	// ------------------------------------------------------------------------------------------
+	
+	public AbstractEvent(SkeletonVertex mVertex, MyVector3f mSchnittpunkt,
+			float mDistance) {
+		super();
+		this.mVertex = mVertex;
+		this.mSchnittpunkt = mSchnittpunkt;
+		this.mDistance = mDistance;
+		calculateShrinkDistance();
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public MyVector3f getSchnittpunkt() {
+		assert mSchnittpunkt != null: "Schnittpunkt ist null, Kopie kann nicht erzeugt werden";
+		return mSchnittpunkt.clone();
+	}
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public MyVector3f getSchnittpunktPtr() {
+		return mSchnittpunkt;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public void setSchnittpunkt(MyVector3f mSchnittpunkt) {
+		this.mSchnittpunkt = mSchnittpunkt;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public Float getDistance() {
+		return mDistance;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public void setDistance(float mDistance) {
+		this.mDistance = mDistance;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public SkeletonVertex getVertex() {
+		return mVertex;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public void setVertex(SkeletonVertex mVertex) {
+		this.mVertex = mVertex;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	// ------------------------------------------------------------------------------------------
+	// berechnet den Abstand zwischen Schnittpunkt und Vertex und damit die tatsaechliche Schrumpfdistanz
+	public void calculateShrinkDistance() {
+		
+		MyVector3f vertPosition = mVertex.getPosition();
+		MyVector3f schnittpunktPosition = mSchnittpunkt;
+		
+		MyVector3f connection = new MyVector3f();
+		connection.sub(vertPosition, schnittpunktPosition);
+		mShrinkDistance = connection.length();
+		
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String toString() {
+		return "AbstractEvent [VertexPosition=" + mVertex.getPositionPtr() + ", Schnittpunkt="
+				+ mSchnittpunkt + ", Distance=" + mDistance
+				+ ", Type="+ getType() + "]";
+	}
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public Float getShrinkDistance() {
+		return mShrinkDistance;
+	}
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + Float.floatToIntBits(mDistance);
+		result = prime * result
+				+ ((mSchnittpunkt == null) ? 0 : mSchnittpunkt.hashCode());
+		// result = prime * result + Float.floatToIntBits(mShrinkDistance);
+		// result = prime * result + ((mVertex == null) ? 0 : mVertex.hashCode());
+		return result;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		AbstractEvent other = (AbstractEvent) obj;
+		if (Float.floatToIntBits(mDistance) != Float
+				.floatToIntBits(other.mDistance))
+			return false;
+		if (mSchnittpunkt == null) {
+			if (other.mSchnittpunkt != null)
+				return false;
+		} else if (!mSchnittpunkt.equals(other.mSchnittpunkt))
+			return false;
+		if (Float.floatToIntBits(mShrinkDistance) != Float
+				.floatToIntBits(other.mShrinkDistance))
+			return false;
+		if (mVertex == null) {
+			if (other.mVertex != null)
+				return false;
+		} else if (!mVertex.equals(other.mVertex))
+			return false;
+		return true;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+
+	
+}

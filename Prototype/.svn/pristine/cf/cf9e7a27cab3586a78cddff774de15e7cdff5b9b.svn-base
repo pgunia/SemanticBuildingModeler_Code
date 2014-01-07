@@ -1,0 +1,994 @@
+package semantic.building.modeler.prototype.algorithm;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Vector;
+
+import org.apache.log4j.Logger;
+
+import semantic.building.modeler.math.Axis;
+import semantic.building.modeler.math.MyPolygon;
+import semantic.building.modeler.math.MyVector3f;
+import semantic.building.modeler.math.MyVectormath;
+import semantic.building.modeler.math.Ray;
+import semantic.building.modeler.math.Vertex3d;
+
+/**
+ * 
+ * @author Patrick Gunia Klasse implementiert ein Verfahren zur Berechnung von
+ *         Grundrissen aus einer Menge komplexer Objekte. Das Verfahren
+ *         durchlaeuft die Kanten aller Eingabegrundrisse und berechnet einen
+ *         Polygonzug, der saemtliche eingegebenen Grundrisse enthaelt.
+ */
+
+public class FootprintMerger {
+
+	/** Logging-Instanz */
+	protected static Logger LOGGER = Logger.getLogger(FootprintMerger.class);
+
+	/** Instanz der Mathebibliothek */
+	private MyVectormath mMathHelper = MyVectormath.getInstance();
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode berechnet fuer den uebergebenen Grundriss-Bucket einen gemergeten
+	 * Grundriss und gibt diesen als Vektor von Vertex3d-Instanzen zurueck.
+	 * 
+	 * @param bucket
+	 *            Bucket mit Grundrissen, die innerhalb der Methode gemerged
+	 *            werden
+	 * @return Vektor mit Vertex3d-Instanzen, die den gemergten Grundriss
+	 *         beschreiben
+	 */
+	public List<Vertex3d> computeMergedFootprint(FootprintBucket bucket) {
+
+		LOGGER.info("Footprintbucket enthaelt: "
+				+ bucket.getFootprints().size() + " Eingabepolygone!");
+		Ray startRay = findStartRay(bucket);
+
+		LOGGER.trace("Startray fuer Schnittberechnungen: " + startRay);
+		assert startRay != null : "FEHLER: Es konnte kein Anfangsstrahl ermittelt werden!";
+
+		List<Vertex3d> resultVertices = new ArrayList<Vertex3d>();
+
+		// sammele erneut alle Strahlen aller Grundrisse ein
+		List<Ray> allRays = new ArrayList<Ray>();
+		List<Footprint> allFootprints = bucket.getFootprints();
+		Iterator<Footprint> footprintIter = allFootprints.iterator();
+		while (footprintIter.hasNext()) {
+			allRays.addAll(footprintIter.next().getRays());
+		}
+
+		Iterator<Ray> rayIter = allRays.iterator();
+		LOGGER.trace("Insgesamt befinden sich " + allRays.size()
+				+ " Rays im Eimer");
+
+		while (rayIter.hasNext()) {
+			LOGGER.trace(rayIter.next());
+		}
+
+		Ray currentRay = null, lastRay = null, intersectionRay = null;
+		MyVector3f intersectionPoint = null;
+		Vertex3d resultVertex = null;
+
+		// fuege Startpunkt des Startstrahls als erstes Vertex hinzu
+		resultVertex = new Vertex3d(startRay.getStart());
+		resultVertices.add(resultVertex);
+
+		// Steuervariable fuer Iterationen
+		Boolean doContinue = true;
+
+		// erster Treffer des Startstrahls, wird fuer Abbruchkriterium benoetigt
+		MyVector3f firstHit = null;
+
+		// Iteration laeuft so lange, bis Abbruchkriterium erfuellt wurde
+		while (doContinue) {
+			// 1. Iteration
+			if (currentRay == null) {
+				currentRay = startRay;
+			}
+
+			Hit resultHit = findIntersectingRay(currentRay, bucket, lastRay,
+					intersectionPoint);
+
+			assert resultHit != null : "Es konnte kein Schnittstrahl ermittelt werden";
+			// System.out.println("Gefundener Strahl: " + intersectionRay);
+
+			intersectionRay = resultHit.getHitRay();
+			intersectionPoint = resultHit.getIntersection();
+
+			// speichere den ersten gefundenen Treffer
+			if (firstHit == null)
+				firstHit = intersectionPoint;
+
+			// erzeuge eine Vertex3d-Instanz fuer den Schnittpunkt und fuege sie
+			// zum Result-Vektor hinzu
+			resultVertex = new Vertex3d(intersectionPoint);
+
+			// breche ab, wenn ein Vertex geadded werden soll, das bereits
+			// vorhanden ist
+			LOGGER.trace("Adde Vertex: " + resultVertex);
+			if (resultVertices.contains(resultVertex))
+				break;
+			else
+				resultVertices.add(resultVertex);
+
+			// naechste Iteration vorbereiten
+			lastRay = currentRay;
+			currentRay = intersectionRay;
+
+			// Abbruchkriterium pruefen
+			doContinue = checkTermination(startRay, firstHit, currentRay,
+					intersectionPoint);
+
+		}
+
+		return resultVertices;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet die Abbruchkriterien fuer die Footprintberechnung. Ein
+	 * Abbruch findet statt, falls der aktuelle Ray mit dem dem StartRay
+	 * uebereinstimmt und der Treffer nicht hinter dem ersten berechneten
+	 * Treffer fuer den StartRay liegt.
+	 * 
+	 * @param startRay
+	 *            Ausgangsstrahl, von dem ausgehend der Berechnungsalgorithmus
+	 *            ermittelt wird
+	 * @param firstHit
+	 *            Erster Treffer auf dem Ausgangsstrahl, wird als
+	 *            Abbruchkriterium verwendet
+	 * @param currentRay
+	 *            Ausgangsstrahl der naechsten Iteration
+	 * @param currentHit
+	 *            Ermittelter Treffer auf dem aktuellen Strahl
+	 * @return True, falls Start- und Current-Ray nicht identisch sind oder der
+	 *         aktuelle Treffer hinter dem ersten Treffer auf dem Startstrahl
+	 *         liegt, False sonst
+	 */
+
+	private Boolean checkTermination(Ray startRay, MyVector3f firstHit,
+			Ray currentRay, MyVector3f currentHit) {
+
+		// sind Start- und Current-Ray identisch, teste, ob der Treffer hinter
+		// dem ersten Treffer auf dem Strahl liegt
+		if (startRay.equals(currentRay)) {
+			Double firstHitParameter = mMathHelper
+					.calculateParameterOnRayForPoint(firstHit, startRay);
+			Double currentHitParameter = mMathHelper
+					.calculateParameterOnRayForPoint(currentHit, currentRay);
+
+			// wenn der Parameter des aktuellen Hits groesser ist, liegt der
+			// Treffer hinter dem ersten Treffer
+			if (currentHitParameter > firstHitParameter)
+				return true;
+			else
+				return false;
+		}
+		// wenn der aktuelle Strahl vom Startstrahl abweicht, rechne weiter
+		else
+			return true;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode durchlaeuft alle Strahlen im uebergebenen Vektor und testet auf
+	 * Schnitte mit dem uebergebenen Strahl. Hierbei wird immer der Strahl
+	 * zurueckgegeben, dessen Schnitt mit dem uebergebenen Strahl dem
+	 * Ausgangspunkt am naechsten liegt (darum kann man auch nicht abbrechen,
+	 * sobald man den ersten Schnitt gefunden hat)
+	 * 
+	 * @param current
+	 *            Strahl, fuer den im Strahlenvektor nach Schnitten gesucht wird
+	 * @param bucket
+	 *            Eimer, fuer den der gemergte Grundriss berechnet wird und der
+	 *            alle Strahlen fuer diese Rechnung enthaelt
+	 * @param lastIntersected
+	 *            Im letzten Durchlauf geschnittener Strahl. So wird ein
+	 *            Ping-Pong-Effekt zwischen Iterationen vermieden
+	 * @param lastIntersection
+	 *            Vektor, der den letzten berechneten Schnittpunkt beschreibt
+	 * @return Hit-Datenstruktur, die den getroffenen Strahl sowie den
+	 *         Schnittpunkt enthaelt
+	 */
+	private Hit findIntersectingRay(final Ray current,
+			final FootprintBucket bucket, final Ray lastIntersected,
+			final MyVector3f lastIntersection) {
+
+		Ray currentTestRay = null;
+		float currentIntersectionDistance = Float.MAX_VALUE, lastIntersectionDistance = -Float.MAX_VALUE;
+		MyVector3f currentIntersection = null;
+
+		List<Hit> hits = new ArrayList<Hit>();
+		Hit currentHit = null;
+
+		LOGGER.debug("Aktueller Teststrahl: " + current);
+		LOGGER.debug("Letzter Schnittpunkt: " + lastIntersection);
+
+		Iterator<Ray> allRayIter = bucket.getAllRays().iterator();
+		while (allRayIter.hasNext()) {
+			currentTestRay = allRayIter.next();
+
+			// sich selber nicht testen
+			if (currentTestRay.equals(current))
+				continue;
+
+			// den zuletzt geschnittenen Strahl ebenfalls ueberspringen
+			if (currentTestRay.equals(lastIntersected))
+				continue;
+
+			// sonst Schnittpunkt berechnen
+			currentIntersection = mMathHelper
+					.calculateRay2RayIntersectionApproximation(currentTestRay,
+							current);
+
+			// Entfernung des letzten Schnittpunkts zum Startpunkt bestimmen
+			if (lastIntersection != null)
+				lastIntersectionDistance = mMathHelper
+						.calculatePointPointDistance(lastIntersection,
+								current.getStart());
+
+			if (currentIntersection != null) {
+
+				// das Verfahren wird einen Strahl finden, der den Startpunkt
+				// des aktuellen Strahls als Endpunkt besitzt, diesen
+				// ueberspringen
+				if (currentIntersection.equals(current.getStart()))
+					continue;
+
+				// wenn Vertices auf Strahlen liegen, kann der Fall auftreten,
+				// dass der Schnittpunkt des letzten Durchlaufs erneut gefunden
+				// wird
+				if (currentIntersection.equals(lastIntersection))
+					continue;
+
+				// logger.trace("CurrentIntersection: " + currentIntersection);
+
+				// befindet sich der Strahl auf den Liniensegmenten beider
+				// Teststrahlen?
+				if (mMathHelper.isPointOnLineSegment(currentIntersection,
+						currentTestRay)
+						&& mMathHelper.isPointOnLineSegment(
+								currentIntersection, current)) {
+
+					// sortiere solche Hits aus, bei denen der Schnittpunkt der
+					// Endpunkt der getroffenen Kante ist
+					double rayParameter = mMathHelper
+							.calculateParameterOnRayForPoint(
+									currentIntersection, currentTestRay);
+					if (mMathHelper.isWithinTolerance(rayParameter, 1.0d,
+							0.001d)) {
+						continue;
+					}
+
+					// Entfernung bestimmen
+					currentIntersectionDistance = mMathHelper
+							.calculatePointPointDistance(currentIntersection,
+									current.getStart());
+
+					// wenn der neue Schnittpunkt naeher am Startpunkt liegt,als
+					// der im vorheringen Startpunkt berechnete, breche ab!
+					// Dieser Schnittpunkt liegt auf dem Eingabestrahl und muss
+					// nicht mit dem Startpunkt identisch sein, darum muss
+					// jeder neue Schnittpunkt, der auf dem Strahl ermittelt
+					// wird, zwingend weiter vom Start des Eingabestrahls
+					// entfernt liegen
+					if (lastIntersectionDistance > currentIntersectionDistance) {
+						continue;
+					}
+
+					// erzeuge eine Treffer-Instanz
+					currentHit = new Hit(currentTestRay,
+							currentIntersectionDistance, currentIntersection);
+					if (!hits.contains(currentHit)) {
+						hits.add(currentHit);
+						// logger.info("Kandidat: " + currentHit);
+					}
+
+					// suche nach Strahlen, die eine Verlaengerung des
+					// Ausgangsstrahls sind und somit durch Schnittpunkttests
+					// nicht gefunden werden koennen
+					List<Ray> additionalRays = searchForRaysContainingGivenPoint(
+							currentIntersection, current, bucket.getAllRays());
+
+					// wenn Strahlen gefunden wurden, adde sie zum Hit-Vetor
+					if (additionalRays.size() > 0) {
+						Ray additionalRay = null;
+						Iterator<Ray> additionalRayIter = additionalRays
+								.iterator();
+						while (additionalRayIter.hasNext()) {
+							additionalRay = additionalRayIter.next();
+							currentHit = new Hit(additionalRay,
+									currentIntersectionDistance,
+									currentIntersection);
+							if (!hits.contains(currentHit)) {
+								hits.add(currentHit);
+								// logger.info("Kandidat: " + currentHit);
+							}
+						}
+					}
+				}
+			}
+		}
+
+		LOGGER.debug("Insgesamt wurden " + hits.size()
+				+ " potentielle Kandidaten bestimmt.");
+
+		// wenn kein Strahl gefunden wurde, werfe eine Exception
+		assert hits.size() > 0 : "Fehler: Es konnte kein Strahl gefunden werden, der sich mit dem Eingabestrahl schneidet! Eingabe: "
+				+ current;
+
+		/*
+		 * logger.info("Potentielle Treffer: "); for(int i = 0; i < hits.size();
+		 * i++) logger.info(hits.get(i));
+		 */
+		// es wurde nur ein Strahl getroffen
+		if (hits.size() == 1) {
+			return hits.get(0);
+		}
+
+		currentHit = chooseResultRay(hits, current, bucket);
+		if (currentHit == null)
+			return hits.get(0);
+		else
+			return currentHit;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode waehlt den Ergebnisstrahl aus dem uebergebenen Vektor aus und
+	 * gibt diesen zurueck. Dadurch kapselt die Methode die gesamte
+	 * Auswahllogik.
+	 * 
+	 * @param hits
+	 *            Liste mit saemtlichen Trefferinstanzen
+	 * @param current
+	 *            Strahl, fuer den nach Schnitten mit allen anderen Strahlen
+	 *            gesucht wird
+	 * @param bucket
+	 *            Eimer, fuer den aktuell ein gemergter Grundriss erstellt wird
+	 * @return Hit-Datenstruktur, die als Ausgangspunkt der naechsten Iteration
+	 *         dient
+	 */
+	private Hit chooseResultRay(final List<Hit> hits, final Ray current,
+			final FootprintBucket bucket) {
+
+		Hit currentHit = null;
+
+		// kommen mehrere Hits mit gleicher Distanz vor, fuellt man diese
+		// zunaechst in einen Buffer-Vector um
+		List<Hit> buffer = new ArrayList<Hit>();
+
+		sortHitsByDistance(hits);
+		float distance = Float.MAX_VALUE;
+
+		// befuelle den Buffer-Vector mit allen Hits, die die minimale Distanz
+		// besitzen
+		// 1. Hit nehmen und distance initialisieren
+		buffer.add(hits.get(0));
+		distance = hits.get(0).getDistance();
+
+		for (int i = 1; i < hits.size(); i++) {
+			currentHit = hits.get(i);
+			if (currentHit.getDistance() > distance)
+				break;
+			else
+				buffer.add(currentHit);
+		}
+
+		hits.clear();
+
+		// wurde nur ein Hit mit dieser Distanz gefunden, gebe diesen als
+		// Ergebnis zurueck
+		if (buffer.size() == 1)
+			return buffer.get(0);
+
+		// an diesem Punkt hat man mehrere Strahlen mit gleicher Distanz
+		// fuehre einen Votingansatz durch, bei dem fuer jeden Strahl Tests
+		// gerechnet werden => je nach Ausgang dieser Tests wird der Vote-Count
+		// fuer den jeweiligen Treffer erhoeht, am Ende waehlt man den Strahl
+		// mit den meisten Stimmen
+		Iterator<Hit> hitIter = buffer.iterator();
+
+		while (hitIter.hasNext()) {
+			currentHit = hitIter.next();
+			// bevorzuge Strahlen mit unterschiedlicher Richtung
+			if (!hasSameDirection(currentHit, current))
+				currentHit.vote(1);
+
+			// bevorzuge Strahlen, die nicht zum gleichen Objekt gehoeren, wie
+			// der Ausgangsstrahl
+			// es ist wichtiger, dass der Strahl nicht zum gleichen Objekt
+			// gehoert, darum 2 Stimmen!
+			if (!isPartOfSameObject(currentHit, current, bucket)) {
+				currentHit.vote(2);
+			}
+		}
+
+		// sortiere die Strahlen anhand der Stimmen, die sie durch die
+		// Votingmethoden bekommen haben
+		sortHitsByVoteCount(buffer);
+
+		/*
+		 * logger.debug("Gevotete Hits: "); for (int i = 0; i < buffer.size();
+		 * i++) logger.debug(buffer.get(i));
+		 */
+		return buffer.get(buffer.size() - 1);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode sucht nach Strahlen, die den uebergebenen Schnittpunkt enthalten.
+	 * Ziel ist es, Verlaengerungen des Eingabestrahls zu entdecken, die durch
+	 * die Schnittpunkttests nicht bestimmt werden koennen, da es fuer die
+	 * Gleichungssysteme keine gueltige Loesung gibt.
+	 * 
+	 * @param intersection
+	 *            Schnittpunkt, der im aktuellen Durchlauf bestimmt wurde
+	 * @param current
+	 *            Strahl, fuer den nach Schnittpunkten gesucht wird
+	 * @param allRays
+	 *            Vector mit allen Strahlen, die im aktuell verarbeiteten Bucket
+	 *            enthalten sind
+	 * @return Vector mit allen Strahlen, die den Schnittpunkt enthalten
+	 */
+	private List<Ray> searchForRaysContainingGivenPoint(
+			MyVector3f intersection, Ray current, List<Ray> allRays) {
+
+		List<Ray> result = new Vector<Ray>();
+		Iterator<Ray> rayIter = allRays.iterator();
+		Ray currentRay = null;
+
+		while (rayIter.hasNext()) {
+			currentRay = rayIter.next();
+			// skippe den Eingabestrahl
+			if (currentRay.equals(current))
+				continue;
+			if (mMathHelper.isPointOnRay(intersection, currentRay)) {
+				if (mMathHelper.isPointOnLineSegment(intersection, currentRay)) {
+					// sortiere solche Hits aus, bei denen der Schnittpunkt der
+					// Endpunkt der getroffenen Kante ist
+					double rayParameter = mMathHelper
+							.calculateParameterOnRayForPoint(intersection,
+									currentRay);
+					if (mMathHelper.isWithinTolerance((float) rayParameter,
+							1.0f, 0.01f))
+						continue;
+					result.add(currentRay);
+				}
+			}
+		}
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * 1. Votingverfahren fuer Strahl-Auswahl: Verfahren testet, ob der
+	 * getroffene Strahl und der Ausgangsstrahl die gleiche Richtung besitzen
+	 * 
+	 * @param currentHit
+	 *            Treffer-Instanz, deren Strahlenrichtung ueberprueft wird
+	 * @param currentRay
+	 *            Strahlen-Instanz, fuer die ein Nachfolger gesucht wird
+	 * @return True, falls der Ausgangsstrahl die gleiche Richtung besitzt, wie
+	 *         der getroffene Strahl, False sonst
+	 */
+	private boolean hasSameDirection(Hit currentHit, Ray currentRay) {
+
+		MyVector3f currentHitDirection = currentHit.getHitRay().getDirection();
+		MyVector3f currentRayDirection = currentRay.getDirection();
+
+		// teste, ob die Strahlen parallel sind
+		return mMathHelper.isParallel(currentHitDirection, currentRayDirection);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * 2. Votingverfahren fuer Strahlauswahl: Methode testet, ob der getroffene
+	 * Strahl und der Ausgangsstrahl Teil des gleichen Ausgangspolygons sind
+	 * 
+	 * @param currentHit
+	 *            Treffer-Instanz, fuer deren Strahl getestet wird, ob dieser
+	 *            zum gleichen Polygon gehoert, wie der Ausgangsstrahl
+	 * @param currentRay
+	 *            Strahlen-Instanz, fuer die ein Nachfolger gesucht wird
+	 * @param bucket
+	 *            Eimer, fuer den aktuell ein gemergter Grundriss errechnet wird
+	 * @return True, falls beide Strahlen Kanten des gleichen Polygons sind,
+	 *         False sonst
+	 */
+
+	private boolean isPartOfSameObject(final Hit currentHit,
+			final Ray currentRay, final FootprintBucket bucket) {
+
+		// bestimme die Quellpolygone fuer den Trefferstrahl und den Teststrahl
+		List<Footprint> footprints = bucket.getFootprints();
+		MyPolygon currentPolygon = null;
+		Ray hitRay = currentHit.getHitRay();
+
+		LOGGER.debug("CURRENT RAY: " + currentRay + " HITRAY: " + hitRay);
+
+		for (int i = 0; i < footprints.size(); i++) {
+			currentPolygon = footprints.get(i).getFootprintPoly();
+
+			// wenn beide Strahlen im Polygon enthalten sind, gebe True zurueck
+			if (currentPolygon.isRayInPolygon(hitRay)
+					&& currentPolygon.isRayInPolygon(currentRay)) {
+				LOGGER.debug("SAME POLY");
+				LOGGER.debug("CUR POLY: " + currentPolygon);
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode sortiert alle gefundenen Treffer des Ausgangsstrahls mit allen
+	 * anderen Strahlen aufgrund ihrer Distanz zum Start der getroffenen
+	 * Strahlen
+	 * 
+	 * @param hits
+	 *            Liste mit allen Treffern
+	 */
+	private void sortHitsByDistance(List<Hit> hits) {
+		Collections.sort(hits, new Comparator<Hit>() {
+			@Override
+			public int compare(Hit o1, Hit o2) {
+				return o1.getDistance().compareTo(o2.getDistance());
+			}
+		});
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode sortiert alle gefundenen Treffer des Ausgangsstrahls mit allen
+	 * anderen Strahlen aufgrund der Anzahl der Stimmen, die sie waehrend der
+	 * Strahlauswahl erhalten haben
+	 * 
+	 * @param hits
+	 *            Vector mit allen Treffern
+	 */
+	private void sortHitsByVoteCount(List<Hit> hits) {
+		Collections.sort(hits, new Comparator<Hit>() {
+			@Override
+			public int compare(Hit o1, Hit o2) {
+				return o1.getVoteCount().compareTo(o2.getVoteCount());
+			}
+		});
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode sucht innerhalb der Footprintstrukturen nach einem Strahl, von
+	 * dem aus der Schnittalgorithmus starten kann. Der Startpunkt des
+	 * Verfahrens muss ausserhalb aller anderen Grundrisse liegen. Ein solcher
+	 * Punkt muss innerhalb der Ebene, in der der Grundriss liegt, einen
+	 * Extremwert aufweisen.
+	 * 
+	 * @param bucket
+	 *            Eimer mit einer Menge von Grundrissen, fuer die ein gemergter
+	 *            Grundriss erstellt werden soll
+	 * @return Strahl, von dem ausgehend die Schnittberechnung erfolgt
+	 */
+	private Ray findStartRay(FootprintBucket bucket) {
+
+		Axis ignorableAxis = findRelevantComponent(bucket);
+
+		// sammele alle Rays in einer grossen Liste
+		List<Ray> allRays = new ArrayList<Ray>();
+		List<Footprint> allFootprints = bucket.getFootprints();
+		Iterator<Footprint> footprintIter = allFootprints.iterator();
+		while (footprintIter.hasNext()) {
+			allRays.addAll(footprintIter.next().getRays());
+		}
+
+		List<Ray> rayBuffer = new ArrayList<Ray>();
+
+		// initialisiere auf maximal moeglichen Float-Wert
+		float minValueForRelevantComponent = Float.MAX_VALUE;
+		Ray currentStart = null, currentRay = null;
+		MyVector3f currentPos = null;
+
+		// suche jetzt den Strahl, der bezueglich der relevanten Komponente den
+		// kleinsten Wert besitzt, dies ist der Start-Strahl
+		Iterator<Ray> rayIter = allRays.iterator();
+		while (rayIter.hasNext()) {
+			currentRay = rayIter.next();
+			currentPos = currentRay.getStartPtr();
+
+			// durchlaufe alle Rays und suche denjenigen, der zunaechst in einer
+			// Komponente den kleinsten Wert besitzt
+			// die Entscheidung, welche Komponente getestet wird, haengt von der
+			// Achse ab, die vorab als "ignorierbar" bestimmt wurde
+			switch (ignorableAxis) {
+			// x
+			case X:
+				if (currentPos.z <= minValueForRelevantComponent) {
+					minValueForRelevantComponent = currentPos.z;
+					// adde den Ray am Start des Buffers => dadurch befinden
+					// sich die Rays mit den kleinsten Werten am Ende vorne
+					rayBuffer.add(0, currentRay);
+				}
+				break;
+			// y
+			case Y:
+				if (currentPos.x <= minValueForRelevantComponent) {
+					minValueForRelevantComponent = currentPos.x;
+					rayBuffer.add(0, currentRay);
+				}
+				break;
+			// z
+			case Z:
+				if (currentPos.y <= minValueForRelevantComponent) {
+					minValueForRelevantComponent = currentPos.y;
+					rayBuffer.add(0, currentRay);
+				}
+				break;
+			// Fehler
+			default:
+				assert false : "Die berechnete relevante Komponente ist ungueltig: "
+						+ ignorableAxis;
+				break;
+			}
+		}
+
+		// durchlaufe den Buffer und pruefe, ob mehrere Rays mit gleicher
+		// Komponente vorkommen
+		rayIter = rayBuffer.iterator();
+		minValueForRelevantComponent = Float.MAX_VALUE;
+
+		// entferne nun alle Strahlen, deren Wert ueber dem aktuellen Minimum
+		// liegt
+		while (rayIter.hasNext()) {
+			currentRay = rayIter.next();
+			currentPos = currentRay.getStartPtr();
+
+			switch (ignorableAxis) {
+			// x
+			case X:
+				if (currentPos.z <= minValueForRelevantComponent) {
+					minValueForRelevantComponent = currentPos.z;
+				}
+				// Komponentenwert liegt ueber dem aktuellen Minimum =>
+				// entfernen
+				else
+					rayIter.remove();
+				break;
+			// y
+			case Y:
+				if (currentPos.x <= minValueForRelevantComponent) {
+					minValueForRelevantComponent = currentPos.x;
+				} else
+					rayIter.remove();
+				break;
+			// z
+			case Z:
+				if (currentPos.y <= minValueForRelevantComponent) {
+					minValueForRelevantComponent = currentPos.y;
+				} else
+					rayIter.remove();
+				break;
+			}
+		}
+
+		// wenn es nur noch einen Strahl gibt, hat man sein Ergebnis
+		if (rayBuffer.size() == 1)
+			return rayBuffer.get(0);
+
+		// Kontrollwert zuruecksetzen
+		minValueForRelevantComponent = Float.MAX_VALUE;
+
+		// sonst muss noch eine zweite Komponente geprueft werden
+		// erneuter Switch mit Test auf die verbleibende Komponente:
+		rayIter = rayBuffer.iterator();
+		while (rayIter.hasNext()) {
+			currentRay = rayIter.next();
+			currentPos = currentRay.getStartPtr();
+			switch (ignorableAxis) {
+			// x
+			case X:
+				if (currentPos.y < minValueForRelevantComponent) {
+					minValueForRelevantComponent = currentPos.y;
+					currentStart = currentRay;
+				}
+				break;
+			// y
+			case Y:
+				if (currentPos.z < minValueForRelevantComponent) {
+					minValueForRelevantComponent = currentPos.z;
+					currentStart = currentRay;
+				}
+				break;
+			// z
+			case Z:
+				if (currentPos.x < minValueForRelevantComponent) {
+					minValueForRelevantComponent = currentPos.x;
+					currentStart = currentRay;
+				}
+				break;
+			}
+		}
+
+		// jetzt hat man einen Strahl, der in beiden Komponenten minimal ist
+		return currentStart;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode analysiert die Grundrissebenen und verwendet deren
+	 * Normalenvektoren, um zu bestimmen, welcher Koordinatenebene deren
+	 * Ausrichtungen am naechsten kommen, indem die Komponente mit dem groessten
+	 * absoluten Wert des Normalenvektors ermittelt wird. Diese wird
+	 * zurueckgereicht
+	 * 
+	 * @param bucket
+	 *            Bucket mit Grundrissen, die innerhalb der Methode gemerged
+	 *            werden
+	 * @return Achse, die fuer eine Projektion ignoriert werden koennte
+	 */
+	private Axis findRelevantComponent(FootprintBucket bucket) {
+
+		Footprint currentFootprint = null;
+		MyVector3f planeNormal = null;
+		List<Footprint> footprints = bucket.getFootprints();
+		Iterator<Footprint> footprintIter = footprints.iterator();
+		Axis relevantComponent = Axis.UNKNOWN;
+		Axis resultComponent = Axis.UNKNOWN;
+		while (footprintIter.hasNext()) {
+			currentFootprint = footprintIter.next();
+
+			// hole die Normale und suche eine Komponente mit Wert 0
+			planeNormal = currentFootprint.getFootprintPoly().getNormal();
+
+			// bestimme die Koordinatenkomponente mit dem groessten absoluten
+			// Wert
+			relevantComponent = mMathHelper
+					.getIgnorableAxis(planeNormal, false);
+
+			// validiere, dass alle Grundrisse die gleiche Ausrichtung besitzen
+			if (resultComponent != Axis.UNKNOWN
+					&& relevantComponent != resultComponent) {
+				assert false : "Planes mit unterschiedlichen Ausrichtungen der Normalenvektoren im gleichen Bucket";
+			} else
+				resultComponent = relevantComponent;
+		}
+		return resultComponent;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * 
+	 * @author Patrick Gunia
+	 * 
+	 *         Instanzen dieser Klasse speichern alle Informationen ueber
+	 *         gefundene Treffer waehrend der Schnittpunkberechnungen zwischen
+	 *         Strahlen waehrend der Footprintbestimmung
+	 * 
+	 */
+
+	private class Hit {
+
+		/** Strahl, mit dem der Schnittpunkt berechnet wurde */
+		private Ray mHitRay = null;
+
+		/**
+		 * Entfernung des gefundenen Schnittpunkts vom Ausgangsstrahl, also des
+		 * Strahls, fuer den Schnitte gesucht werden
+		 */
+		private Float mDistance = null;
+
+		/**
+		 * Speichert, ob der gefundene Schnittpunkt Startpunkt des gespeicherten
+		 * Strahls ist
+		 */
+		private boolean mIsStart = false;
+
+		/** Berechneter Schnittpunkt */
+		private MyVector3f mIntersection = null;
+
+		/**
+		 * Fuer die Treffer werden unterschiedliche Tests durchgefuehrt, um zu
+		 * entscheiden, welcher Treffer Ausgnagspunkt fuer die naechste
+		 * Iteration ist. Bei jedem Test, der fuer einen Hit entscheided,
+		 * inkrementiert man den Hit-Count und waehlt anschliessend den Strahl
+		 * mit den meisten Stimmen
+		 */
+		private int mVoteCount = 0;
+
+		// ------------------------------------------------------------------------------------------
+
+		/**
+		 * @param mHitRay
+		 * @param mDistance
+		 * @param mIsStart
+		 */
+		public Hit(Ray mHitRay, float mDistance, MyVector3f intersection) {
+			super();
+			this.mHitRay = mHitRay;
+			this.mDistance = mDistance;
+			this.mIntersection = intersection;
+
+			// stelle fest, ob der gefundene Schnittpunkt Startpunkt des
+			// getroffenen Strahls ist
+			isPointStart();
+		}
+
+		// ------------------------------------------------------------------------------------------
+		/**
+		 * @return the mHitRay
+		 */
+		public Ray getHitRay() {
+			return mHitRay;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		/**
+		 * @return the mDistance
+		 */
+		public Float getDistance() {
+			return mDistance;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		/**
+		 * @return the mIsStart
+		 */
+		public boolean isStart() {
+			return mIsStart;
+		}
+
+		// ------------------------------------------------------------------------------------------
+		/**
+		 * @return the mIntersection
+		 */
+		public MyVector3f getIntersection() {
+			return mIntersection;
+		}
+
+		// ------------------------------------------------------------------------------------------
+		/**
+		 * Methode prueft, ob der gesetzte Schnittpunkt Startpunkt des
+		 * getroffenen Strahls ist. Sofern dies der Fall ist, wird das
+		 * Start-Flag gesetzt.
+		 */
+		private void isPointStart() {
+
+			// teste, ob der Schnittpunkt dem Startpunkt entspricht
+			MyVector3f rayStart = mHitRay.getStart();
+			if (rayStart.equals(mIntersection)) {
+				mIsStart = true;
+				return;
+			}
+
+			MyVectormath mathHelper = MyVectormath.getInstance();
+
+			// teste nun, ob die Distanz zwischen den Punkten innerhalb eines
+			// Toleranzbereichs liegt
+			// sofern dies der Fall ist, werden die Punkte als "gleich"
+			// angesehen
+			float distance = mathHelper.calculatePointPointDistance(rayStart,
+					mIntersection);
+			if (mathHelper.isWithinTolerance(distance, 0.0f, 0.01f)) {
+				mIsStart = true;
+				return;
+			}
+
+			mIsStart = false;
+		}
+
+		// ------------------------------------------------------------------------------------------
+		/**
+		 * Inkemenentiert den Vote-Count fuer den aktuellen Hit um den
+		 * uebergebenen Wert
+		 * 
+		 * @param voteCount
+		 *            Anzahl der Stimmen, um die der Count geaendert wird, kann
+		 *            auch negativ sein
+		 * 
+		 */
+		public void vote(int voteCount) {
+			mVoteCount += voteCount;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		/**
+		 * @return the mVoteCount
+		 */
+		public Integer getVoteCount() {
+			return mVoteCount;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		/*
+		 * (non-Javadoc)
+		 * 
+		 * @see java.lang.Object#toString()
+		 */
+		@Override
+		public String toString() {
+			return "Hit: Strahl: " + mHitRay + ", Distanz:" + mDistance
+					+ ", Schnittpunkt:" + mIntersection + ", Votes: "
+					+ mVoteCount;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		/*
+		 * (non-Javadoc)
+		 * 
+		 * @see java.lang.Object#hashCode()
+		 */
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + getOuterType().hashCode();
+			result = prime * result
+					+ ((mDistance == null) ? 0 : mDistance.hashCode());
+			result = prime * result
+					+ ((mHitRay == null) ? 0 : mHitRay.hashCode());
+			result = prime * result
+					+ ((mIntersection == null) ? 0 : mIntersection.hashCode());
+			return result;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		/*
+		 * (non-Javadoc)
+		 * 
+		 * @see java.lang.Object#equals(java.lang.Object)
+		 */
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			Hit other = (Hit) obj;
+			if (!getOuterType().equals(other.getOuterType()))
+				return false;
+			if (mDistance == null) {
+				if (other.mDistance != null)
+					return false;
+			} else if (!mDistance.equals(other.mDistance))
+				return false;
+			if (mHitRay == null) {
+				if (other.mHitRay != null)
+					return false;
+			} else if (!mHitRay.equals(other.mHitRay))
+				return false;
+			if (mIntersection == null) {
+				if (other.mIntersection != null)
+					return false;
+			} else if (!mIntersection.equals(other.mIntersection))
+				return false;
+			return true;
+		}
+
+		private FootprintMerger getOuterType() {
+			return FootprintMerger.this;
+		}
+	}
+	// ------------------------------------------------------------------------------------------
+}

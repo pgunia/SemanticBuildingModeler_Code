@@ -1,0 +1,399 @@
+package math;
+
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Random;
+
+import org.apache.log4j.Logger;
+
+/**
+ * 
+ * @author Patrick Gunia
+ * 
+ * Klasse zur Verwaltung konvexer und konkaver Polygone.
+ * 
+ */
+
+public class MyPolygon implements Cloneable {
+
+	/** Logging-Instanz */
+	protected final static Logger LOGGER = Logger.getLogger("math.MyPolygon");
+	
+	/** Eckpunkte des Polygons definiert im Uhrzeigersinn */
+	protected transient List<Vertex3d> mVertices = null;
+	
+	/** Strahlenrepraesentation des Polygonzugs */
+	private transient List<Ray> mRays = null;
+	
+	/** Ebene, in der das Polygon enthalten ist */
+	private transient Plane mPlane = null;
+
+	/** Mittelpunkt des Polygons, wird erst bei Bedarf ermittelt */
+	private transient MyVector3f mCenter = null;
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mPoints
+	 */
+	public MyPolygon(final List<Vertex3d> mPoints) {
+		update(mPoints);
+		}
+		
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuehrt eine Updateberechnung fuer die uebergebenen neuen Punkte durch, fuer diese werden neue Strahlen, Ebenen etc. gesetzt
+	 * @param points Punkte, die das Polygon definieren
+	 */
+	final public void update(final List<Vertex3d> points) {
+		this.mVertices = new ArrayList<Vertex3d>(points.size());
+		this.mVertices.addAll(points);
+		computeRaysForPoints();
+		computePlaneForPolygon();
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Update ohne Uebergabe neuer Punkte
+	 */
+	public void update() {
+		computeRaysForPoints();
+		computePlaneForPolygon();
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * 
+	 */
+	public MyPolygon() {
+		super();
+		mVertices = new ArrayList<Vertex3d>();
+		mRays = new ArrayList<Ray>();
+	}
+	// ------------------------------------------------------------------------------------------
+	
+	/**
+	 * @return the mPoints
+	 */
+	public List<Vertex3d> getVertices() {
+		return mVertices;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mPoints the mPoints to set
+	 */
+	public void setPoints(final List<Vertex3d> mPoints) {
+		this.mVertices = mPoints;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mRays
+	 */
+	public List<Ray> getRays() {
+		return mRays;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mRays the mRays to set
+	 */
+	public void setRays(final List<Ray> mRays) {
+		this.mRays = mRays;
+		
+		// wenn der Ray-Vector gesetzt wurde, extrahiere alle Punkte und befuelle damit den
+		// Points-Vector
+	
+		Ray currentRay = null;
+		Vertex3d currentVert = null;
+		
+		for(int i = 0; i < mRays.size(); i++) {
+			currentRay = mRays.get(i);
+			currentVert = new Vertex3d(currentRay.getStart());
+			mVertices.add(currentVert);
+		}
+		computePlaneForPolygon();
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @return Deep-Copy der Ebenennormale der Polygonebene
+	 */
+	public MyVector3f getNormal() {
+		assert mPlane != null: "FEHLER: Es wurde noch keine gueltige Polygonebene berechnet";
+		return mPlane.getNormal().clone();
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @return Referenz auf die Normale der Polygonebene
+	 */
+	public MyVector3f getNormalPtr() {
+		assert mPlane != null: "FEHLER: Es wurde noch keine gueltige Polygonebene berechnet";
+		return mPlane.getNormal();
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet eine Repraesentation des Polygons als geschlossener Strahlenzug von Ray-Instanzen
+	 */
+	private void computeRaysForPoints() {
+		
+		mRays = new ArrayList<Ray>();
+		assert !mVertices.isEmpty(): "FEHLER: Es wurden keine Vertices fuer das Polygon gesetzt";
+		
+		Ray currentRay = null;
+		Vertex3d currentVertex = null, currentNeighbour = null;
+		
+		// berechne aus jeweils 2 aufeinanderfolgenden Punkten im Vector einen Strahl und fuege ihn zum
+		// Strahlenvektor hinzu
+		for(int i = 0; i < mVertices.size(); i++) {
+			
+			currentVertex = mVertices.get(i);
+			
+			// Ueberlauf beachten
+			if(i+1 < mVertices.size()) currentNeighbour = mVertices.get(i + 1);
+			else currentNeighbour = mVertices.get(0);
+			
+			currentRay = new Ray(currentVertex, currentNeighbour);
+			mRays.add(currentRay);
+		}
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet eine Ebene, die das Polygon enthaelt
+	 * 
+	 */
+	private void computePlaneForPolygon() {
+		
+		mPlane = MyVectormath.getInstance().calculatePlaneByVertices(mVertices);
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode liefert einen Punkt im Inneren des Polygons, indem ausgehend vom Mittelpunkt in Richtung eines zufaellig gewaehlten Eckpunkts um einen zufaelligen Betrag verschoben wird
+	 * @return Kann bei konkaven Polygonen zu Problemen
+	 */
+	public MyVector3f getPointInPoly() {
+		
+		final MyVectormath mathHelper = MyVectormath.getInstance();
+		final Random rand = new Random();
+		
+		// waehle zufaellig einen Eckpunkt
+		final int index = rand.nextInt(getVertices().size());
+		final Vertex3d vert = mVertices.get(index);
+		
+		
+		final MyVector3f centerToPoint = new MyVector3f();
+		centerToPoint.sub(vert.getPositionPtr(), getCenter());
+		
+		// Vektor zufallsbasiert skalieren
+		centerToPoint.scale(mathHelper.getRandomValueWithinRange(0.2f, 0.8f));
+		final MyVector3f result = new MyVector3f();
+		result.add(mCenter, centerToPoint);
+		
+		// teste, ob sich der Punkt innerhalb des Polygons befindet
+		assert mathHelper.isPointInPolygon(this, new Vertex3d(result)): "FEHLER: Der ermittelte Punkt liegt nicht innerhalb des Quellpolygons!";
+		return result;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet den Mittelpunkt des Polygons
+	 * @return Mittelpunkt des Polygons
+	 */
+	public MyVector3f getCenter() {
+		if(mCenter == null) {
+			mCenter = MyVectormath.getInstance().calculatePolygonCenter(getVertices());
+		}
+		return mCenter;
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet, ob der uebergebene Strahl eine Kante des Polygons beschreibt
+	 * @param ray Strahl, fuer den getestet wird, ob er Teil des Polygonzugs ist
+	 * @return True, falls der Strahl eine Kante bildet, False sonst
+	 */
+	public boolean isRayInPolygon(final Ray ray) {
+		return mRays.contains(ray);
+	}
+	// ------------------------------------------------------------------------------------------
+
+
+
+	/* (non-Javadoc)
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		
+		final StringBuffer strBuf = new StringBuffer(100);
+		final String lineBreak = System.getProperty("line.separator");
+		strBuf.append("Polygon: " + lineBreak);
+		for(int i = 0; i < mVertices.size(); i++) {
+			strBuf.append("mVertices.add(new Vertex3d(" + mVertices.get(i).getX() + "f, " + mVertices.get(i).getY() + "f, " + mVertices.get(i).getZ() + "f));"+ lineBreak);
+		}
+		
+		return strBuf.toString();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mPlane
+	 */
+	public Plane getPlane() {
+		return mPlane;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mPlane the mPlane to set
+	 */
+	public void setPlane(final Plane mPlane) {
+		this.mPlane = mPlane;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode skaliert das aktuelle Polygon um den uebergebenen Scalingfaktor. Dazu berechnet man vom Polygonmittelpunkt Vektoren auf jedes einzelne Vertex und skaliert diesen Vektor.
+	 * @param scalingFactor
+	 */
+	public void scale(final Float scalingFactor) {
+		
+		final MyVector3f center = getCenter();
+		MyVector3f centerToPoint = null;		
+		for(Vertex3d currentVert : mVertices) {
+			centerToPoint = new MyVector3f();
+			centerToPoint.sub(currentVert.getPositionPtr(), center);
+			centerToPoint.scale(scalingFactor);
+			currentVert.getPositionPtr().add(centerToPoint, center);
+		}		
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode verschiebt alle Polygonpunkte um den uebergebenen Translationsvektor
+	 * @param translate Verschiebungsvektor
+	 */
+	public void translate(final MyVector3f translate) {
+		
+		for(Vertex3d curVertex : mVertices) {
+			curVertex.getPositionPtr().add(translate);
+		}
+		computeRaysForPoints();
+		computePlaneForPolygon();
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public MyPolygon clone()  {
+		MyPolygon clone = null;
+		try {
+			clone = (MyPolygon) super.clone();
+		} catch (CloneNotSupportedException e) {
+			e.printStackTrace();
+		}
+		final List<Vertex3d> verts = new ArrayList<Vertex3d>(mVertices.size());
+		for(int i = 0; i < mVertices.size(); i++) verts.add(mVertices.get(i).clone());
+		clone.update(verts);
+		return clone;
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	/** 
+	 * Methode berechnet einen vertikalen Strahl, der eine vertikale Kante
+	 * innerhalb des uebergebenen Quads beschreibt. Diese Berechnung kann fuer
+	 * die Bestimmung der Quad-Hoehe eingesetzt werden.
+	 * Methode geht dabei so vor, dass zunaechst das Vertex mit der groessten y-Koordinaten ausgewaehlt wird, von diesem faellt man 
+	 * dann ein Lot und berechnet Schnittpunkte dieses Lots mit allen Kanten des Polygons (dabei muessen die Schnittpunkte nicht zwingend
+	 * auf den Kanten liegen, da man sonst bei entarteten Polygonen keine Treffer erhalten wuerde). Diese Schnittpunkte sortiert man 
+	 * ebenfalls aufgrund der y-Koordinaten und waehlt denjenigen mit der groessten y-Koordinate. Bei rechteckigen Quads entspricht dies
+	 * einer Kante des Quads. Der Strahl zeigt immer in Richtung der negativen y-Achse, also nach "oben" fuer Processing.
+	 */
+	public Ray getVerticalRay() {
+
+		
+		// erstelle eine neue Liste, damit die eigentliche List nicht sortiert wird
+		final List<Vertex3d> clonedVerts = new ArrayList<Vertex3d>(mVertices);
+		// sortiere die Vertices aufgrund ihrer y-Koordinaten
+		sortVerticesByYCoordinate(clonedVerts);
+		
+		// kleinere y-Werte <=> hoeher in der Darstellung wegen Processing-Koordinatensystem
+		// somit ist das erste Vertex in der sortierten Liste das hoechste in der spaeteren Darstellung
+		final MyVector3f positiveYAxisDirection = new MyVector3f(0.0f, 1.0f, 0.0f);
+		final Ray testRay = new Ray(clonedVerts.get(0).getPosition(), positiveYAxisDirection);
+		
+		// berechne nun Schnittpunkte des Teststrahls mit allen Kanten des Polygons
+		Ray currentRay = null;
+		MyVector3f intersection = null;
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		List<Vertex3d> intersectionBuffer = new ArrayList<Vertex3d>(clonedVerts.size());
+		for(int i = 0; i < mRays.size(); i++) {
+			currentRay = mRays.get(i);
+			intersection = mathHelper.calculateRay2RayIntersectionApproximation(currentRay, testRay);
+			if(intersection != null) intersectionBuffer.add(new Vertex3d(intersection));
+		}
+		
+		// sortiere die Schnittpunkte nach ihren y-Koordinaten
+		sortVerticesByYCoordinate(intersectionBuffer);
+		
+		// und nimm das Vertex mit der groessten y-Koordinate
+		return new Ray(clonedVerts.get(0), intersectionBuffer.get(intersectionBuffer.size() - 1));
+	
+	}
+	// ------------------------------------------------------------------------------------------
+	/** Sortierroutinen fuer Vertexlisten anhand unterschiedlicher Koordinaten */
+	/**
+	 * Methode sortiert die uebergebene Vertexliste anhand der y-Koordinaten der
+	 * enthaltenen Vertices
+	 * 
+	 * @param vertices
+	 *            Zu sortierende Liste
+	 */
+	private void sortVerticesByYCoordinate(final List<Vertex3d> vertices) {
+		// sortiere anhand der y-koordinate
+		Collections.sort(vertices, new Comparator<Vertex3d>() {
+			public int compare(final Vertex3d o1, final Vertex3d o2) {
+
+				Float o1Float = o1.getY();
+				Float o2Float = o2.getY();
+				return o1Float.compareTo(o2Float);
+			}
+		});
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet einen einfachen Schwerpunkt (mathematisch nicht korrekt, aber als Kennwert ausreichend) als Mittelwert der Polygonvertices
+	 * @return Mittelwert der Polygoneckpunkte
+	 */
+	public MyVector3f getAveragedVertices() {
+		
+		MyVector3f result = new MyVector3f();
+		for(int i = 0; i < mVertices.size(); i++) result.add(mVertices.get(i).getPositionPtr());
+		float scale = 1.0f / mVertices.size();
+		result.scale(scale);
+		return result;
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode kehrt die Vertexorder im Polygon um und fuehrt anschliessend Updates saemtlicher internen Strukturen durch
+	 */
+	public void switchVertexOrder() {
+		
+		// Vertexabfolge drehen
+		Collections.reverse(mVertices);
+		
+		// Updates
+		update();
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

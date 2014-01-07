@@ -1,0 +1,214 @@
+package semantic.city.builder.prototype.service;
+
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.log4j.Logger;
+
+import semantic.city.builder.prototype.exception.PrototypeException;
+import semantic.city.builder.prototype.graphics.interfaces.iElement;
+
+/**
+ * @author Patrick Gunia Verwaltung aller generierten IDs inkl. Verweise auf die
+ *         jeweiligen Objekte Singleton-Klasse
+ */
+
+public class ObjectManagementService {
+
+	/** Singleton-Instanz */
+	private static ObjectManagementService instance = null;
+
+	private static Logger LOGGER = Logger
+			.getLogger(ObjectManagementService.class);
+
+	/**
+	 * speichert Objektreferenzen in der Szene basierend auf ihren IDs
+	 */
+	private Map<String, iElement> mObjects;
+
+	/**
+	 * speichert die IDs aller direkt renderbaren Objekte, die bei der
+	 * Objektverwaltung registriert sind
+	 */
+	private Set<String> mRenderableIDs;
+
+	// ------------------------------------------------------------------------------------------
+	/** privater Default-Konstruktor */
+	private ObjectManagementService() {
+
+		mObjects = new HashMap<String, iElement>();
+		mRenderableIDs = new HashSet<String>();
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public static ObjectManagementService getInstance() {
+		if (instance == null)
+			instance = new ObjectManagementService();
+		return instance;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode loescht saemtliche innerhalb der Objektverwaltung gespeicherten
+	 * Objekte, Referenzen etc.
+	 */
+	public void reset() {
+		mObjects.clear();
+		mRenderableIDs.clear();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuegt das uebergebene Objekt zu den Objektverwaltungsstrukturen
+	 * hinzu
+	 * 
+	 * @param object
+	 *            Objekt, das zu den Verwaltungslisten hinzugefuegt wird
+	 */
+	public void addObjectToManagement(iElement object) {
+
+		LOGGER.debug("Fuege Objekt mit ID: " + object.getID()
+				+ " zur Objektverwaltung hinzu");
+		addObject(object);
+		addRenderable(object.getID());
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode entfernt das Objekt mit der uebergebenen ID aus der
+	 * Objektverwaltung
+	 * 
+	 * @param id
+	 *            ID des zu entfernenden Objekts
+	 */
+	public void removeObjectFromManagement(String id) {
+
+		LOGGER.debug("Entferne Objekt mit ID: " + id
+				+ " aus der Objektverwaltung");
+		removeObjectByID(id);
+		removeRenderable(id);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/** fuegt ein Element zur Hashmap hinzu */
+	private Boolean addObject(iElement object) {
+
+		// pruefe ob das
+		if (mObjects.containsKey(object.getID())) {
+			new PrototypeException(
+					"ObjectManagementService.addObject: Das Objekt mit der ID "
+							+ object.getID()
+							+ " wurde bereits zur Objektverwaltung hinzugefuegt");
+			return false;
+		} else {
+			mObjects.put(object.getID(), object);
+			return true;
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode sucht das Objekt mit der uebergebenen ID und entfernt es aus der
+	 * Obejktverwaltung
+	 * 
+	 * @param id
+	 *            ID des zu entfernenden Objekts
+	 * @return True, falls das Objekt erfolgreich entfernt wurde, False sonst
+	 */
+	private Boolean removeObjectByID(String id) {
+		if (mObjects.containsKey(id)) {
+			mObjects.remove(id);
+			return true;
+		} else {
+			/*
+			 * new PrototypeException(
+			 * "ObjectManagementService.removeObjectByID: Das Objekt mit der ID "
+			 * + id +
+			 * " konnte nicht aus der Objektverwaltung geloescht werden, da es nicht gefunden werden konnte"
+			 * );
+			 */
+			return false;
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * durchlaeuft alle gespeicherten Objekte und gibt deren IDs aus
+	 */
+	public void printCurrentState() {
+		int counter = 1;
+		System.out
+				.println("---------------------------------------------------------------------");
+		System.out.println("Aktuell werden " + mObjects.size()
+				+ " Elemente durch das Objektmanagement verwaltet.");
+		System.out.println("Diese haben folgende IDs:");
+		Iterator<String> elementIter = mObjects.keySet().iterator();
+		while (elementIter.hasNext()) {
+			System.out.println(counter + ": " + elementIter.next());
+			counter++;
+		}
+		System.out
+				.println("---------------------------------------------------------------------");
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/** fuegt die Id eines renderbaren Objekts zum Verwaltungsvektor hinzu */
+	private void addRenderable(String id) {
+		if (mRenderableIDs.contains(id))
+			return;
+		else {
+			mRenderableIDs.add(id);
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Entfernt das Objekt mit der uebergebenen ID aus der Liste der renderbaren
+	 * Objekte
+	 * 
+	 * @param id
+	 *            ID des zu entfernenden Objekts
+	 */
+	private Boolean removeRenderable(String id) {
+		if (mRenderableIDs.contains(id)) {
+			mRenderableIDs.remove(id);
+			return true;
+		} else {
+			// new
+			// PrototypeException("ObjectManagementService.removeRenderable: Das Objekt mit der ID: "
+			// + id +
+			// " konnte nicht aus der Liste der renderbaren Objekte entfernt werden, da es nicht gefunden wurde");
+			return false;
+
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public Set<String> getRenderables() {
+		return mRenderableIDs;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Getter zum Zugriff auf die Objekte ueber ihre IDs
+	 */
+	public iElement getObject(String id) {
+		if (!mObjects.containsKey(id)) {
+			new PrototypeException(
+					"ObjectManagementService.getObject: Das Objekt mit der ID: "
+							+ id + " konnte nicht gefunden werden");
+			return null;
+		} else
+			return mObjects.get(id);
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

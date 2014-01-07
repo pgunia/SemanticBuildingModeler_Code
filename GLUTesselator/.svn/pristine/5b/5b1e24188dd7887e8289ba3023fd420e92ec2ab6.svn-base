@@ -1,0 +1,499 @@
+package semantic.city.builder.tesselation.service;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+import javax.media.opengl.GL;
+import javax.media.opengl.glu.GLU;
+import javax.media.opengl.glu.GLUtessellator;
+import javax.media.opengl.glu.GLUtessellatorCallbackAdapter;
+
+import org.apache.log4j.Logger;
+
+import math.MyVectormath;
+import math.Ray;
+import math.Vertex3d;
+import processing.core.PApplet;
+import processing.core.PConstants;
+import processing.opengl.PGraphicsOpenGL;
+import semantic.city.builder.tesselation.math.TesselationVertex;
+import semantic.city.builder.tesselation.model.DrawingType;
+
+/**
+ * 
+ * @author Patrick Gunia
+ * Klasse stellt alle notwendigen Funktionen zur Verfuegung, um ueber OpenGL beliebige Polygonzuege 
+ * tesselieren zu lassen.
+ *
+ */
+
+public class TesselationService extends GLUtessellatorCallbackAdapter implements PConstants {
+	
+	/** Logging-Instanz */
+	private static Logger logger = Logger
+			.getLogger("glutesselator.tesselationservice.tesselationservice");
+	
+	/** Singleton-Instanz */
+	private static TesselationService mInstance = null;
+	
+	/** OpenGL-Kontext */
+	private GL mGl = null; 
+	
+	/** GLUT-Instanz */
+	private GLU mGlu = null;
+	
+	/** Tesselator-Objekt aus der GLU-Bibliothek */
+	private GLUtessellator mTesselatorObj;
+	
+	/** Renderkontext */
+	private PGraphicsOpenGL mG = null;
+	
+	/** Buffer nimmt alle waehrend der Berechnung erzeugten Vertices auf */
+	private List<TesselationVertex> mTesselationVertexBuffer = null;
+	
+	/** Flag gibt an, ob das Singleton-Objekt bereits initialisiert wurde */
+	private Boolean isInitialized = false;
+	
+	/** 
+	 * Speichert die aktuelle Drawing-Art, diese wird waehrend der Tesselatorberechnungen stetig aktualisiert. Nach 
+	 * Abschluss der Berechnungen werden diese States genutzt, um den erstellten Vertexbuffer auf ein einheitliches 
+	 * Drawingschem (TRIANGLE) zu bringen
+	 */
+	private DrawingType mCurrentDrawType = null;
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Leerer Default-Konstruktor
+	 */
+	private TesselationService() {
+		mCurrentDrawType = new DrawingType();
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Init-Routine erzeugt saemtliche fuer die Tesselation benoetigten Objekte und Strukturen, registriert
+	 * Callbacks etc. 
+	 * @param parentApplet PApplet-Instanz, die benoetigt wird, um die OpenGL-Kontexte zu erzeugen
+	 */
+	public void init(PApplet parentApplet) {
+		
+		if(!isInitialized) {
+			
+			// initialisiere alle benoetigten OpenGL-Strukturen
+			mG = (PGraphicsOpenGL) parentApplet.g;
+			mGl = mG.gl;
+			mGlu = mG.glu;
+			mTesselatorObj = mGlu.gluNewTess();
+			mTesselationVertexBuffer = new ArrayList<TesselationVertex>();
+
+			// registriere saemtliche CALLBACK-Funktionen
+			mGlu.gluTessCallback(mTesselatorObj, GLU.GLU_TESS_BEGIN, this);
+			mGlu.gluTessCallback(mTesselatorObj, GLU.GLU_TESS_END, this);
+			mGlu.gluTessCallback(mTesselatorObj, GLU.GLU_TESS_VERTEX, this);
+			mGlu.gluTessCallback(mTesselatorObj, GLU.GLU_TESS_COMBINE, this);
+			mGlu.gluTessCallback(mTesselatorObj, GLU.GLU_TESS_ERROR, this);
+			
+			// setze Winding-Rule zur Bestimmung, welche Regionen innerhalb bzw. ausserhalb des Polygons liegen
+			// ist dann relevant, wenn man Polygone mit Loechern tesselieren will
+			/*
+			mGlu.gluTessProperty(mTesselatorObj, GLU.GLU_TESS_WINDING_RULE,
+					GLU.GLU_TESS_WINDING_NONZERO);
+			*/
+			isInitialized = true;
+		}
+		
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Singleton-Getter fuer Singleton-Instanz
+	 */
+	public static TesselationService getInstance() {
+		if(mInstance == null) mInstance = new TesselationService();
+		return mInstance;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode bekommt eine Liste mit Linienzuegen uebergeben, die jeweils durch eine Menge von Vertices beschrieben werden. 
+	 * Diese Linienzuege koennen dabei sowohl regulaere Polygonumrisse, aber auch Loecher beschreiben. Der Unterschied bei 
+	 * Loechern besteht ausschliesslich in der Definitionsrichtung der Vertices. Das derart beschriebene Polygon wird durch
+	 * die GLU-Tesselator-Methoden tesseliert, das Ergebnis ist eine Menge von Punkten Dreiecken etc. die anschliessend 
+	 * weiterverarbeitet werden.
+	 * @param polygons Liste mit Polygonkonturen, die zusammen ein Polygon beschreiben
+	 * @return Liste mit Vertex3d-Strukturen, die die Eckpunkte des tesselierten Polygons beschreiben
+	 */
+	public List<Vertex3d> tesselate(List<List<Vertex3d>> polygons) {
+		mTesselationVertexBuffer.clear();
+		mCurrentDrawType = null;
+		List<Vertex3d> currentContour = null;
+		double vertex[];
+		
+		// Beginn der GL-Verarbeitung
+		mG.beginGL();
+		
+		// Beginn des Tesselationsabschnittes
+		mGlu.gluTessBeginPolygon(mTesselatorObj, null);
+		
+		for(int i = 0; i < polygons.size(); i++) {
+			currentContour = polygons.get(i);
+			
+			Iterator<Vertex3d> vertIter = currentContour.iterator();
+			Vertex3d currentVertex = null;
+			
+			// beginne Definition des Linienzugs des aktuell verarbeiteten Contours
+			mGlu.gluTessBeginContour(mTesselatorObj);
+			
+			while(vertIter.hasNext()) {
+				currentVertex = vertIter.next();
+				
+				// OpenGL-kompatible Repraesentation des Vertex erstellen
+				vertex = new double[] { currentVertex.getX(), currentVertex.getY(), currentVertex.getZ() };
+				mGlu.gluTessVertex(mTesselatorObj, vertex, 0, vertex); 
+			}
+			
+			// beende Linienzug, Verbindung zum Startvertex wird automatisch hergestellt
+			mGlu.gluTessEndContour(mTesselatorObj);
+		}
+	
+		// Ende des Tesselationsabschnittes
+		mGlu.gluTessEndPolygon(mTesselatorObj);
+
+		// Ende der GL-Verarbeitung
+		mG.endGL();
+		
+		// Nachverarbeitung der erzeugten Vertices
+		return postProcessPoints();
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode verwendet die GLU-Methoden, um ein uebergebenes Polygon automatisch zu tesselieren. Hierbei handelt es sich um die ersten Variante,
+	 * die nur ein einzelnes Contour als Eingabe bekommt.
+	 * @param Liste mit Vertices, die im Uhrzeigersinn definiert einen Polygonkantenzug beschreiben
+	 * @return Liste mit Vertices, die Dreiecksstrukturen beschreiben, je 3 aufeinanderfolgende Vertices bilden ein Dreieck 
+	 */
+	public List<Vertex3d> tesselateSingleContour(List<Vertex3d> polygon) {
+		mTesselationVertexBuffer.clear();
+		mCurrentDrawType = null;
+				
+		Iterator<Vertex3d> vertIter = polygon.iterator();
+		Vertex3d currentVertex = null;
+		
+		// Beginn der GL-Verarbeitung
+		mG.beginGL();
+		
+		// Beginn des Tesselationsabschnittes
+		mGlu.gluTessBeginPolygon(mTesselatorObj, null);
+		
+		// beginne Definition des Polygonlinienzuges
+		mGlu.gluTessBeginContour(mTesselatorObj);
+		
+		double vertex[];
+		
+		while(vertIter.hasNext()) {
+			currentVertex = vertIter.next();
+			
+			// OpenGL-kompatible Repraesentation des Vertex erstellen
+			vertex = new double[] { currentVertex.getX(), currentVertex.getY(), currentVertex.getZ() };
+			mGlu.gluTessVertex(mTesselatorObj, vertex, 0, vertex); 
+		}
+		
+		// beende Linienzug, Verbindung zum Startvertex wird automatisch hergestellt
+		mGlu.gluTessEndContour(mTesselatorObj);
+		
+		// Ende des Tesselationsabschnittes
+		mGlu.gluTessEndPolygon(mTesselatorObj);
+
+		// Ende der GL-Verarbeitung
+		mG.endGL();
+		
+		// Nachverarbeitung der erzeugten Vertices
+		return postProcessPoints();
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	/** GLUtessellatorCallbackAdapter Funktionen */
+	/**
+	 * Callback fuer GLU_TESS_BEGIN, wird fuer jedes erzeugte Tesselator-Objekt gecallt
+	 * @param type Wahrend der Berechnung der Tesselation berechnet OpenGL, wie die erzeugten 
+	 * Daten am besten durch OpenGL gezeichnet werden koennen, die uebergebenen Integer-Werte beziehen sich
+	 * auf die DrawingType-Enum-Werte
+	 */
+	@Override
+	public void begin(int type) {
+		mCurrentDrawType = new DrawingType(type);
+		mGl.glBegin(type);
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Callback fuer GLU_TESS_END
+	 */
+	@Override
+	public void end() {
+		mGl.glEnd();
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Callback fuer GLU_TESS_VERTEX, wird jedes Mal aufgerufen, wenn waehrend der Tesselation ein Vertex erzeugt wird,
+	 * die so erzeugten Vertices werden in dieser Funktion zum Buffer hinzugefuegt, um sie spaeter wiederverwenden zu 
+	 * koennen.
+	 * @param data Array mit den Koordinaten des neu erzeugten Vertex
+	 */
+	@Override
+	public void vertex(Object data) {
+		if (data instanceof double[]) {
+			double[] d = (double[]) data;
+			if (d.length != 3) {
+				throw new RuntimeException(
+						"TessCallback vertex() data isn't length 3");
+			}
+			TesselationVertex current = new TesselationVertex(d[0], d[1], d[2], mCurrentDrawType);
+			mTesselationVertexBuffer.add(current);
+			
+			
+		} else {
+			throw new RuntimeException(
+					"TessCallback vertex() data not understood");
+		}
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Callback fuer GLU_TESS_ERROR, wird aufgerufen, wenn waehrend der Tesselationsberechnungen ein Fehler auftritt
+	 * @param errnum Integer, der die Fehlernummer des aufgetretenen Fehlers enthaelt, diese kann ueber die errorString-Funktion in einen Fehlerstring umgewandelt werden
+	 */
+	@Override
+	public void error(int errnum) {
+		throw new RuntimeException("Tessellation Error: "
+				+ mGlu.gluErrorString(errnum));
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Callback fuer GLU_TESS_COMBINE, wird aufgerufen, wenn sich Kanten des Polygons gegenseitig schneiden oder wenn der Algorithmus entscheidet, 
+	 * dass nahe beieinanderliegende Vertices gemerged werden. Die Methode ermoeglicht einen gewichteten Merge der durch eine Linearkombination der
+	 * uebergebenen Vertexdaten (wird hier aber nicht durchgefuehrt), hier wereden nur die Vertexkoordinaten des neu erzeugten Vertex verwendet und
+	 * in den Output-Buffer geschrieben
+	 * @param coords Koordinaten des neu erzeugten Vertex
+	 * @param data Werden Vertices gemerged, kann das Data-Objekt die Daten von bis zu 4 anderen Vertices enthalten, die in die Merging-Berechnung einbezogen wurden
+	 * @param weight Gewichtung der einzelnen am Merge beteiligten Vertices (s. data-Param), Gewichtungskoeffizienten addieren sich immer auf 1
+	 * @param outData Datenstruktur, die fuer die Rueckgabe verwendet wird, enthaelt einen Zeiger auf die erzeugten Daten
+	 */
+	@Override
+	public void combine(double[] coords, Object[] data, float[] weight,
+			Object[] outData) {
+		double[] vertex = new double[coords.length];
+		vertex[0] = coords[0];
+		vertex[1] = coords[1];
+		vertex[2] = coords[2];
+		outData[0] = vertex;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Nachverarbeitung der waehrend der Tesselation erzeugten Vertices. Diese werden von OpenGL ueber unterschiedliche DrawingTypes gezeichnet, bsw. 
+	 * TRIANGLES oder TRIANGLE_STRIP, diese Methode sorgt dafuer, dass alle Vertices fuer den Drawing-Type TRIANGLES aufbereitet werden, indem bsw. 
+	 * Vertices kopiert und mehrfach eingefuegt werden
+	 */
+	private List<Vertex3d> postProcessPoints() {
+		TesselationVertex current = null;
+		
+		int startIndexStrip = -1;
+		
+		List<Vertex3d> result = new ArrayList<Vertex3d>();
+		DrawingType currentDrawType = null;
+		DrawingType lastDrawType = null;
+		
+		for(int i = 0; i < mTesselationVertexBuffer.size(); i++) {
+			current = mTesselationVertexBuffer.get(i);
+			currentDrawType = current.getDrawType();
+			
+			// init
+			if(lastDrawType == null) lastDrawType = currentDrawType;
+			
+			// wenn sich der DrawType aendert, oder das letzte Vertex verarbeitet wird, muss fuer FAN und STRIP die Verarbeitung angeworfen werden
+			if(!currentDrawType.equals(lastDrawType) || i == mTesselationVertexBuffer.size() - 1)  {
+				
+				// letztes verarbeitetes Vertex, da die subList-Methoden exklusiv fuer das letzte Vertex sind, inkrementiere i
+				if(i == mTesselationVertexBuffer.size() - 1) i++;
+				switch (lastDrawType.getCurrentDrawType()) {
+					case GL_TRIANGLE_FAN:
+						result.addAll(processTriangleFan(mTesselationVertexBuffer.subList(startIndexStrip, i)));
+						startIndexStrip = -1;
+						break;
+					case GL_TRIANGLE_STRIP:
+						result.addAll(processTriangleStrip(mTesselationVertexBuffer.subList(startIndexStrip, i)));
+						startIndexStrip = -1;
+						break;
+					case GL_TRIANGLES:
+						break;
+					default: 
+						assert false: "FEHLER: Unbekannter Drawtype: " + lastDrawType;
+						break;
+					
+				}
+			}
+			
+			// Standardverarbeitung, wenn es sich um ein TRIANGLES-Objekt handelt, adde es direkt, sonst initialisiere den Index
+			switch(currentDrawType.getCurrentDrawType()) {
+				
+				case GL_TRIANGLES: 
+					// wenn es sich um Triangles handelt, adde das vertex zum Result
+					result.add(new Vertex3d(current.getPosition()));
+					break;
+				case GL_TRIANGLE_STRIP:
+					if(startIndexStrip == -1) startIndexStrip = i;
+					break;
+				case GL_TRIANGLE_FAN:
+					if(startIndexStrip == -1) startIndexStrip = i;
+					break;
+				default:
+					assert false: "FEHLER: Unbekannter Drawtype: " + currentDrawType;
+					break;
+			}
+			
+			lastDrawType = currentDrawType;	
+		}
+		
+		// TesselationVertex-Buffer leeren
+		mTesselationVertexBuffer.clear();
+		/*
+		Iterator<Vertex3d> pointIter = result.iterator();
+		System.out.println("ERGEBNIS: ");
+		while(pointIter.hasNext()) {
+			System.out.println(pointIter.next());
+		}
+		*/
+		assert result.size() % 3 == 0: "FEHLER: Die Anzahl der erzeugten Vertices ist kein Vielfaches von 3, die erzeugten Dreiecksstrukturen sind somit wahrscheinlich fehlerhaft!";
+		
+		return result;
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode verarbeitet eine Vertex-Struktur derart, dass sie fuer eine TRIANGLE_STRIP-Liste
+	 * derart Vertices vervielfaeltigt, dass das Ergebnis nicht mehr als TRIANGLE_STRIP, sondern als 
+	 * TRIANGLE gezeichnet werden kann
+	 * @param Liste mit TesselationVertex-Strukturen, die als TRIANGLE_STRIP gezeichnet werden sollen
+	 * @return Liste mit Vertex3d-Strukturen, die als TRIANGLE gezeichnet werden koennen
+	 */
+	private List<Vertex3d> processTriangleStrip(List<TesselationVertex> strip) {
+	
+		
+		logger.debug("INPUT PROCESS STRIP: ");
+		for(int i = 0; i < strip.size(); i++) {
+			logger.debug(strip.get(i));
+		}
+		
+		Iterator<TesselationVertex> tessVertIter = strip.iterator();
+		TesselationVertex currentVertex = null, lastVertex = null;
+		Ray ray = null;
+		
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		List<TesselationVertex> deleteList = new ArrayList<TesselationVertex>();
+		
+		while(tessVertIter.hasNext()) {
+			currentVertex = tessVertIter.next();
+			if(ray != null) {
+				// wenn sich der aktuelle Punkt auf dem Strahl befindet, loesche das letzte Vertex!
+				if(mathHelper.isPointOnRay(currentVertex.getPosition(), ray)) {
+					deleteList.add(lastVertex);
+					logger.debug("Added " + lastVertex + " to Delete-List");
+				}
+				else {
+					ray = new Ray(lastVertex, currentVertex);
+				}
+			}
+			else {
+				if(lastVertex != null) {
+					ray = new Ray(lastVertex, currentVertex);
+				}
+			}
+			lastVertex = currentVertex;
+		}
+		logger.debug("VOR BERECHNUNG: " + strip.size());
+		// Loesche nun alle vertices in der Delete-List
+		tessVertIter = deleteList.iterator();
+		while(tessVertIter.hasNext()) {
+			currentVertex = tessVertIter.next();
+			// strip.remove(currentVertex);
+		}
+		
+		logger.debug("NACH BERECHNUNG: " + strip.size());
+		
+		List<Vertex3d> result = new ArrayList<Vertex3d>(strip.size() + 2);
+		int count = 0;
+		for(int i = 0; i < strip.size(); i++) {
+			if(count == 3) {
+				i -= 3;
+				count = 0;
+			}
+			else {
+				result.add(new Vertex3d(strip.get(i).getPosition()));
+				count++;
+			}
+		}
+		
+		logger.debug("OUTPUT PROCESS STRIP: ");
+		for(int i = 0; i < result.size(); i++) {
+			logger.debug(result.get(i));
+		}
+		
+		return result;
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode verarbeitet Triangle_Fan-Strukturen und loest diese derart auf, dass die Rueckgabe ueber den
+	 * DrawType TRIANGLES gezeichnet werden kann. Triangle_Fans teilen sich ein gemeinsames Center-Vertex, 
+	 * das als erstes in der Liste auftaucht. Danach werden wie bei einem Triangle-Fan nur noch die Aussenkanten
+	 * durch die Vertices beschrieben, wobei das Endvertex der vorherigen Kante immer Startvertex der naechsten ist
+	 * @param fan Liste mit Vertices, die als TRIANGLE_FAN gezeichnet werden
+	 * @return Liste mit Vertices, die als TRIANGLES gezeichnet werden
+	 */
+	private List<Vertex3d> processTriangleFan(List<TesselationVertex> fan) {
+		List<Vertex3d> result = new ArrayList<Vertex3d>();
+		
+		/*
+		System.out.println("INPUT PROCESS FAN: ");
+		for(int i = 0; i < fan.size(); i++) {
+			System.out.println(fan.get(i));
+		}
+		*/
+		Vertex3d center = null;
+		
+		// bei einem Triangle_Fan ist das erste Vertex immer Center der Struktur
+		center = new Vertex3d(fan.get(0).getPosition());
+		TesselationVertex currentVert = null;
+		int count = 0;
+		result.add(center);
+		
+		for(int i = 1; i < fan.size(); i++) {
+			
+			// nach immer zwei Vertices eine Kopie des Centers einfuegen
+			currentVert = fan.get(i);
+			// System.out.println("AKTUELLES VERTEX: " + currentVert + " " + i + " COUNT: " + count);
+			if(count == 2) {
+				result.add(center);
+				count = 0;
+				// i dekrementieren, damit das letzte Vertex im naechsten Durchlauf erneut gewaehlt wird
+				i -= 2;
+			}
+			else {
+				result.add(new Vertex3d(currentVert.getPosition()));
+				count++;
+			}
+			
+		}
+		/*
+		System.out.println("OUTPUT PROCESS FAN: ");
+		for(int i = 0; i < result.size(); i++) {
+			System.out.println(result.get(i));
+		}
+		*/
+		
+		return result;
+	}
+	// ------------------------------------------------------------------------------------------
+
+
+}

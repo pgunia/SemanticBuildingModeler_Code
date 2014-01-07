@@ -1,0 +1,369 @@
+package modelsynthesis.configuration;
+
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.Properties;
+
+import org.apache.log4j.Logger;
+
+import configurationservice.model.enums.RuleType;
+
+
+/**
+ * @author Patrick Gunia
+ * Klasse dient der Konfiguration der Modell-Synthese
+ * Singleton-Implementation
+ */
+
+/**
+ * @deprecated
+ * 
+ *
+ */
+public class SynthesisConfiguration {
+
+	/** Logging-Instanz */
+	protected static Logger LOGGER = Logger.getLogger("modelsynthesis.configuration.synthesisconfiguration");
+	
+	/** Singleton-Instanz */
+	private static SynthesisConfiguration mInstance = null;
+	
+	/** Typ der ersten positionierten Komponente */
+	private transient RuleType mFirstComponentType = null;
+	
+	/** Maximale Anzahl an Eckpositionierungen: -1 => unbegrenzt */
+	private transient Integer mCornerCount = null;
+
+	/** Maximale Anzahl an Reflex-Eckpunktpositionierungen: -1 => unbegrenzt */
+	private transient Integer mReflexCornerCount = null;
+	
+	/** Maximale Anzahl an Kantenpositionierungen: -1 => unbegrenzt */
+	private transient Integer mEdgeCount = null;
+	
+	/** Maximale Anzahl an Outside-Positionierungen: -1 => unbegrenzt */
+	private transient Integer mOutsideCount = null;
+	
+	/** Maximale Anzahl an Inside-Positionierungen: -1 => unbegrenzt */
+	private transient Integer mInsideCount = null;
+	
+	/** Sollen Komponenten zufallsbasiert ausgewaehlt werden? */
+	private transient Boolean mUseRandForComponentChoice = null;
+	
+	/** Soll bei mehreren zur Verfuegung stehenden Regeln zufaellig zwischen diesen gewaehlt werden? */
+	private transient Boolean mUseRandForStateChoice = null;
+	
+	/** Soll versucht werden, "geschlossene Strukturen" zu erzeugen, also solche Regeln staerker zu gewichten, die Indoor an Indoor und Outdoor an Outdoor anordnen */
+	private transient Boolean mUseConsistencyConstraint = null;
+
+	/** Sollen bei der Auswahl der Komponenten nur Kanten beruecksichtigt werden? */
+	private transient Boolean mUseOnlyRayComponents = null;
+	
+	/** Sollen bei der Auswahl der Komponenten nur Vertices beruecksichtigt werden? */
+	private transient Boolean mUseOnlyVertexComponents = null;
+	
+	/** Faktor, mit dem die Voteanzahl fuer Corner-States multipliziert wird */
+	private transient Integer mCornerVoteBoost = null;
+	
+	/** Faktor, mit dem die Voteanzahl fuer ReflexCorner-States multipliziert wird */
+	private transient Integer mReflexCornerVoteBoost = null;
+	
+	/** Faktor, mit dem die Voteanzahl fuer Edge-States multipliziert wird */
+	private transient Integer mEdgeVoteBoost = null;
+	
+	/** Faktor, mit dem die Voteanzahl fuer Outside-States multipliziert wird */
+	private transient Integer mOutsideVoteBoost = null;
+	
+	/** Faktor, mit dem die Voteanzahl fuer Inside-States multipliziert wird */
+	private transient Integer mInsideVoteBoost = null;
+	
+	/** Anzhal paralleler Strahlen, die pro Richtung im Eingabepolygon erstellt werden */
+	private transient Integer mNumberOfParallelRays = null;
+	
+	/** Abstand der parallelen Kanten zueinander */
+	private transient Float mParallellRaysDistance = null;
+	
+	/** Abstand der parallelen Kanten bei der Regelberechnung */
+	private transient Float mRuleComputationParallellRaysDistance = null;
+	
+	/** Soll das Wachstum von einem Startpunkt aus gleichmaessig oder zufaellig erfolgen? => TouchedComponents */
+	private transient Boolean mUseRandomGrowth = null;
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Versteckter Konstruktor zum Auslesen der Konfigurationsdatei
+	 */
+	private SynthesisConfiguration() {
+		
+		Properties propertyList = new Properties();
+		FileInputStream file = null;
+		try {
+			file = new FileInputStream("ressource/Config/synthesis.properties");
+			propertyList.load(file);
+
+			mFirstComponentType = RuleType.valueOf(propertyList.getProperty("FirstComponentType", "CORNER"));
+			mCornerCount = Integer.valueOf(propertyList.getProperty("CornerCount", "-1"));
+			if(mCornerCount == -1) mCornerCount = Integer.MAX_VALUE;
+			
+			mReflexCornerCount = Integer.valueOf(propertyList.getProperty("ReflexCornerCount", "-1"));
+			if(mReflexCornerCount == -1) mReflexCornerCount = Integer.MAX_VALUE;
+			
+			mEdgeCount = Integer.valueOf(propertyList.getProperty("EdgeCount", "-1"));
+			if(mEdgeCount == -1) mEdgeCount = Integer.MAX_VALUE;
+			
+			mOutsideCount = Integer.valueOf(propertyList.getProperty("OutsideCount", "-1"));
+			if(mOutsideCount == -1) mOutsideCount = Integer.MAX_VALUE;
+			
+			mInsideCount = Integer.valueOf(propertyList.getProperty("InsideCount", "-1"));
+			if(mInsideCount == -1) mInsideCount = Integer.MAX_VALUE;
+			
+			mUseRandForComponentChoice = Boolean.valueOf(propertyList.getProperty("UseRandForComponentChoice", "false"));
+			mUseRandForStateChoice = Boolean.valueOf(propertyList.getProperty("UseRandForStateChoice", "false"));
+			mUseConsistencyConstraint = Boolean.valueOf(propertyList.getProperty("UseConsistencyConstraint", "true"));
+			mUseOnlyRayComponents = Boolean.valueOf(propertyList.getProperty("UseOnlyRayComponents", "false"));
+			mUseOnlyVertexComponents = Boolean.valueOf(propertyList.getProperty("UseOnlyVertexComponents", "false"));
+			mCornerVoteBoost = Integer.valueOf(propertyList.getProperty("CornerVoteBoost", "1"));
+			mReflexCornerVoteBoost = Integer.valueOf(propertyList.getProperty("ReflexCornerVoteBoost", "1"));
+			mEdgeVoteBoost = Integer.valueOf(propertyList.getProperty("EdgeVoteBoost", "1"));
+			mOutsideVoteBoost = Integer.valueOf(propertyList.getProperty("OutsideVoteBoost", "1"));
+			mInsideVoteBoost = Integer.valueOf(propertyList.getProperty("InsideVoteBoost", "1"));
+			mNumberOfParallelRays = Integer.valueOf(propertyList.getProperty("NumberOfParallelRays", "4"));
+			mParallellRaysDistance = Float.valueOf(propertyList.getProperty("ParallelRaysDistance", "73.37f"));
+			mRuleComputationParallellRaysDistance = Float.valueOf(propertyList.getProperty("RuleComputationParallellRaysDistance", "13.37f"));
+			mUseRandomGrowth = Boolean.valueOf(propertyList.getProperty("UseRandomGrowth", "false"));
+			
+			LOGGER.trace(this);
+			
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+			LOGGER.error("FEHLER: Konfigurationsdatei konnte nicht gefunden werden!");
+		} catch (IOException e) {
+			e.printStackTrace();
+			LOGGER.error("Die Konfigurationsdatei konnte nicht gelesen werden", e);
+		}
+		finally {
+			try {
+				file.close();
+			} catch (IOException e) {
+				LOGGER.error("Die Konfigurationsdatei konnte nicht geschlossen werden", e);
+				e.printStackTrace();
+			}
+		}
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Singleton-Getter
+	 * @return Singleton-Instanz
+	 */
+	public static SynthesisConfiguration getInstance() {
+		if(mInstance == null) mInstance = new SynthesisConfiguration();
+		return mInstance;
+	}
+	
+	
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mFirstComponentType
+	 */
+	public RuleType getFirstComponentType() {
+		return mFirstComponentType;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mCornerCount
+	 */
+	public Integer getCornerCount() {
+		return mCornerCount;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mReflexCornerCount
+	 */
+	public Integer getReflexCornerCount() {
+		return mReflexCornerCount;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mEdgeCount
+	 */
+	public Integer getEdgeCount() {
+		return mEdgeCount;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mOutsideCount
+	 */
+	public Integer getOutsideCount() {
+		return mOutsideCount;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mInsideCount
+	 */
+	public Integer getInsideCount() {
+		return mInsideCount;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mUseRandForComponentChoice
+	 */
+	public Boolean getUseRandForComponentChoice() {
+		return mUseRandForComponentChoice;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mUseRandForStateChoice
+	 */
+	public Boolean getUseRandForStateChoice() {
+		return mUseRandForStateChoice;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mUseConsistencyConstraint
+	 */
+	public Boolean getUseConsistencyConstraint() {
+		return mUseConsistencyConstraint;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mUseOnlyRayComponents
+	 */
+	public Boolean getUseOnlyRayComponents() {
+		return mUseOnlyRayComponents;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mUseOnlyVertexComponents
+	 */
+	public Boolean getUseOnlyVertexComponents() {
+		return mUseOnlyVertexComponents;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mCornerVoteBoost
+	 */
+	public Integer getCornerVoteBoost() {
+		return mCornerVoteBoost;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	
+	/**
+	 * @return the mReflexCornerVoteBoost
+	 */
+	public Integer getReflexCornerVoteBoost() {
+		return mReflexCornerVoteBoost;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mNumberOfParallelRays
+	 */
+	public Integer getNumberOfParallelRays() {
+		return mNumberOfParallelRays;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mParallellRaysDistance
+	 */
+	public Float getParallellRaysDistance() {
+		return mParallellRaysDistance;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @return the mRuleComputationParallellRaysDistance
+	 */
+	public Float getRuleComputationParallellRaysDistance() {
+		return mRuleComputationParallellRaysDistance;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @return the mUseRandomGrowth
+	 */
+	public Boolean getUseRandomGrowth() {
+		return mUseRandomGrowth;
+	}
+	// ------------------------------------------------------------------------------------------
+	
+
+	/**
+	 * @return the mEdgeVoteBoost
+	 */
+	public Integer getEdgeVoteBoost() {
+		return mEdgeVoteBoost;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mOutsideVoteBoost
+	 */
+	public Integer getOutsideVoteBoost() {
+		return mOutsideVoteBoost;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mInsideVoteBoost
+	 */
+	public Integer getInsideVoteBoost() {
+		return mInsideVoteBoost;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	/* (non-Javadoc)
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		return "SynthesisConfiguration [mFirstComponentType="
+				+ mFirstComponentType + ", mCornerCount=" + mCornerCount
+				+ ", mReflexCornerCount=" + mReflexCornerCount
+				+ ", mEdgeCount=" + mEdgeCount + ", mOutsideCount="
+				+ mOutsideCount + ", mInsideCount=" + mInsideCount
+				+ ", mUseRandForComponentChoice=" + mUseRandForComponentChoice
+				+ ", mUseRandForStateChoice=" + mUseRandForStateChoice
+				+ ", mUseConsistencyConstraint=" + mUseConsistencyConstraint
+				+ ", mUseOnlyRayComponents=" + mUseOnlyRayComponents
+				+ ", mUseOnlyVertexComponents=" + mUseOnlyVertexComponents
+				+ ", mCornerVoteBoost=" + mCornerVoteBoost
+				+ ", mReflexCornerVoteBoost=" + mReflexCornerVoteBoost
+				+ ", mEdgeVoteBoost=" + mEdgeVoteBoost + ", mOutsideVoteBoost="
+				+ mOutsideVoteBoost + ", mInsideVoteBoost=" + mInsideVoteBoost
+				+ ", mNumberOfParallelRays=" + mNumberOfParallelRays
+				+ ", mParallellRaysDistance=" + mParallellRaysDistance
+				+ ", mRuleComputationParallellRaysDistance="
+				+ mRuleComputationParallellRaysDistance + ", mUseRandomGrowth="
+				+ mUseRandomGrowth + "]";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}
+

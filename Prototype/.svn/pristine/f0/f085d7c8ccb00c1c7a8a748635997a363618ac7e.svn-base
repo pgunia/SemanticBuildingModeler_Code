@@ -1,0 +1,442 @@
+package semantic.building.modeler.prototype.graphics.primitives;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Random;
+import java.util.Set;
+
+import semantic.building.modeler.configurationservice.model.enums.Side;
+import semantic.building.modeler.math.MyVector3f;
+import semantic.building.modeler.math.MyVectormath;
+import semantic.building.modeler.math.Plane;
+import semantic.building.modeler.math.Vertex3d;
+import semantic.building.modeler.prototype.exception.PrototypeException;
+import semantic.building.modeler.prototype.graphics.interfaces.iGraphicPrimitive;
+import semantic.building.modeler.prototype.service.EdgeManager;
+
+/**
+ * 
+ * @author Patrick Gunia Instanzen dieser Klasse repraesentieren Dreiecke.
+ * 
+ */
+
+public class Triangle extends AbstractPrimitive {
+
+	/** Array mit allen 3 Kanten des Dreieecks */
+	private Line[] mEdges;
+
+	/** Mittelpunkt des Dreieecks */
+	private MyVector3f mCenter;
+
+	/**
+	 * Zufallszahl, die zur Erzeugung von Farbwerten verwendet wird, in denen
+	 * das Dreieck gezeichnet wird
+	 */
+	private float drawColorMod;
+
+	// ------------------------------------------------------------------------------------------
+
+	public Line[] getEdges() {
+		return mEdges;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public void setEdges(Line[] m_Edges) {
+		this.mEdges = m_Edges;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public Integer[] getIndices() {
+		return mIndices;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void setIndices(Integer[] mIndices) {
+		this.mIndices = mIndices;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public MyVector3f getCenterPtr() {
+		return mCenter;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public MyVector3f getCenter() {
+		assert mCenter != null : "Kein Mittelpunkt gesetzt";
+		MyVector3f result = new MyVector3f();
+		result.x = mCenter.x;
+		result.y = mCenter.y;
+		result.z = mCenter.z;
+
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void setCenter(MyVector3f mCenter) {
+		this.mCenter = mCenter;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public Triangle() {
+		this.mEdges = new Line[3];
+		/*
+		 * new PrototypeException(
+		 * "Triangle:Default Konstruktor aufgerufen. Keine Indices gesetzt");
+		 */
+		getRandomNumber();
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor ist ausgerichtet auf die Dreieckserzeugung fuer Quad-Elemente
+	 * bestehend aus zwei Kinddreiecken. Handelt es sich um Quads mit mehr als
+	 * zwei Dreiecken, muessen die Dreiecke "manuell" erstellt werden, da sonst
+	 * die Indices nicht interpretierbar sind
+	 * 
+	 * @param indices
+	 *            Indices fuer den Zugriff auf der Vertexbuffer. Definiert die
+	 *            Vertices, aus denen das Dreieck besteht
+	 * @param parent
+	 *            Elternobjekt des Dreiecks (meist ein Quad)
+	 */
+	public Triangle(Integer[] indices, iGraphicPrimitive parent) {
+		super();
+		mEdges = new Line[3];
+		if (indices.length == 0)
+			new PrototypeException(
+					"Triangle.Konstruktor mit leerem Index-Array aufgerufen");
+
+		mIndices = indices;
+		setParent(parent);
+
+		for (int i = 0; i < mEdges.length; i++) {
+			mEdges[i] = null;
+		}
+
+		// erzeuge basierend auf den Indices die Edges, die das Triangle bilden
+		createLinesByIndices();
+
+		// erzeuge eine Zufallszahl fuer Farbgebung
+		getRandomNumber();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuegt dem aktuellen Dreieck eine neue Line hinzu, diese wird an
+	 * die erste freie Position gesetzt
+	 */
+	private void addLine(Line edge) {
+		boolean addedEdge = false;
+		for (int i = 0; i < mEdges.length; i++) {
+			if (mEdges[i] == null) {
+				mEdges[i] = edge;
+				addedEdge = true;
+				break;
+			}
+		}
+		if (!addedEdge)
+			new PrototypeException(
+					"Triangle.addLine: Mehr als 3 Lines wurden zum Triangle hinzugefuegt");
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erzeugt alle 3 Kanten des Dreiecks greift dabei auf den
+	 * Edge-Manager zurueck, um Kanten verteilt zu verwalten
+	 */
+	private void createLinesByIndices() {
+
+		Line tempLine = null;
+		Boolean doesEdgeExist = false;
+
+		// hole eine Referenz auf den Edge-Manager
+		EdgeManager edgeManager = getEdgeManager();
+		if (edgeManager == null) {
+			new PrototypeException(
+					"Triangle.createLinesByIndices: Es konnte kein gueltiger Edge-Manager geladen werden");
+			return;
+		}
+
+		// erzeuge Line 0 => 1
+		// bestimme den Index der naechsten Line
+		String indicesLine1 = createOrderedIndex(mIndices[0], mIndices[1]);
+
+		// pruefe, ob diese bereits verwaltet wird
+		doesEdgeExist = edgeManager.containsEdge(indicesLine1);
+
+		// hole eine Referenz auf die Line
+		tempLine = edgeManager.getEdge(indicesLine1, this);
+
+		// wenn die Line noch nicht existierte, setze alle notwendigen Punkte
+		if (!doesEdgeExist) {
+			tempLine.setParent(this);
+			tempLine.addLinePoint(mIndices[0]);
+			tempLine.addLinePoint(mIndices[1]);
+		}
+		addLine(tempLine);
+
+		// erzeuge Line 1 => 2
+		String indicesLine2 = createOrderedIndex(mIndices[1], mIndices[2]);
+
+		doesEdgeExist = edgeManager.containsEdge(indicesLine2);
+		tempLine = edgeManager.getEdge(indicesLine2, this);
+		if (!doesEdgeExist) {
+			tempLine.setParent(this);
+			tempLine.addLinePoint(mIndices[1]);
+			tempLine.addLinePoint(mIndices[2]);
+		}
+		addLine(tempLine);
+
+		// erzeuge Line 2 => 0
+		String indicesLine3 = createOrderedIndex(mIndices[2], mIndices[0]);
+
+		doesEdgeExist = edgeManager.containsEdge(indicesLine3);
+		tempLine = edgeManager.getEdge(indicesLine3, this);
+		if (!doesEdgeExist) {
+			tempLine.setParent(this);
+			tempLine.addLinePoint(mIndices[2]);
+			tempLine.addLinePoint(mIndices[0]);
+		}
+		addLine(tempLine);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	/**
+	 * Methode wird vor der endgueltigen Zerstoerung durch den GC gecallt, entfernt alle Referenzen auf das Dreieck innerhalb des EdgeManagers
+	 */
+	protected void finalize() throws Throwable {
+		LOGGER.trace("Zerstoere Triangle mit ID " + getID());
+
+		// entferne alle Kanten aus dem EdgeManager
+		// hole eine Referenz auf den Edge-Manager
+		EdgeManager edgeManager = getEdgeManager();
+		if (edgeManager == null) {
+			new PrototypeException(
+					"Triangle.createLinesByIndices: Es konnte kein gueltiger Edge-Manager geladen werden");
+			return;
+		}
+		edgeManager.removeTriangleEdgesFromManager(this);
+		for (int i = 0; i < mEdges.length; i++)
+			mEdges[i] = null;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Neuberechnung der Dreiecksnormalen und des Mittelpunkts
+	 */
+	@Override
+	public void update() {
+
+		// hole Vertices vom komplexen Parent-Objekt
+		List<Vertex3d> vertices = getVertices();
+
+		if (vertices == null) {
+			new PrototypeException(
+					"Triangle.Prototype: Parent uebergibt leeres Vertex-Array");
+			return;
+		}
+
+		// berechne Ebene, in der das Dreieck liegt
+		calculatePlane();
+
+		// berechne den Mittelpunkt
+		calculateCenter();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public void calculatePlane() {
+		List<Vertex3d> vertices = getVertices();
+		List<Vertex3d> triangleCorners = new ArrayList<Vertex3d>(3);
+
+		for (int i = 0; i < mIndices.length; i++) {
+			triangleCorners.add(vertices.get(mIndices[i]));
+		}
+
+		MyVector3f startToFirst = new MyVector3f();
+		startToFirst.sub(triangleCorners.get(1).getPosition(), triangleCorners
+				.get(0).getPosition());
+
+		MyVector3f startToSecond = new MyVector3f();
+		startToSecond.sub(triangleCorners.get(2).getPosition(), triangleCorners
+				.get(0).getPosition());
+
+		MyVector3f normal = new MyVector3f();
+		normal.cross(startToFirst, startToSecond);
+		normal.normalize();
+
+		mPlane = new Plane(normal, triangleCorners.get(0).getPosition());
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String toString() {
+		/*
+		 * return "Triangle [mEdges=" + Arrays.toString(mEdges) + ", mIndices="
+		 * + Arrays.toString(mIndices) + ", mNormal=" + mPlane + ", mCenter=" +
+		 * mCenter + "]";
+		 */
+		String message = "Triangle: Indices: ";
+		for (int i = 0; i < mIndices.length; i++) {
+			message += mIndices[i] + " ";
+		}
+		return message;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public Triangle clone() {
+		Triangle result = new Triangle();
+
+		if (this.mCenter != null)
+			result.setCenter(mCenter.clone());
+		if (this.mPlane != null)
+			result.setPlane(mPlane.clone());
+
+		// kopiere die Indices
+		Integer[] indices = new Integer[3];
+		indices[0] = new Integer(mIndices[0]);
+		indices[1] = new Integer(mIndices[1]);
+		indices[2] = new Integer(mIndices[2]);
+		result.setIndices(indices);
+
+		//
+		result.createLinesByIndices();
+
+		// hier muss man sich jetzt die Referenzen auf die Instanzen im
+		// EdgeManager holen
+
+		result.addLine(mEdges[0].clone());
+		result.addLine(mEdges[1].clone());
+		result.addLine(mEdges[2].clone());
+
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void updateParent(iGraphicPrimitive parent) {
+
+		if (parent != null)
+			setParent(parent);
+		else {
+			new PrototypeException(
+					"Triangle.updateParent: Aufruf ohne gueltigen Parent");
+			return;
+		}
+
+		// setze den Parent bei allen Line-Objekten
+		mEdges[0].updateParent(this);
+		mEdges[1].updateParent(this);
+		mEdges[2].updateParent(this);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void calculateCenter() {
+
+		List<Vertex3d> vertices = getVertices();
+		List<Vertex3d> corners = new ArrayList<Vertex3d>();
+
+		corners.add(vertices.get(mIndices[0]));
+		corners.add(vertices.get(mIndices[1]));
+		corners.add(vertices.get(mIndices[2]));
+
+		setCenter(MyVectormath.getInstance().calculateTriangleCenter(corners));
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "triangle";
+	}
+
+	// ------------------------------------------------------------------------------------------
+	// die Seite eines Dreiecks wird vom Parent abgefragt
+	@Override
+	public Side getDirection() {
+
+		if (mParent == null) {
+			new PrototypeException(
+					"Triangle.getDirection: Parent nicht gesetzt");
+			return Side.UNDEFINED;
+		}
+
+		else
+			return mParent.getDirection();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	private void getRandomNumber() {
+		Random generator = new Random();
+		float resultNumber = generator.nextFloat();
+		// normalisiere auf Bereich zwischen 0...255
+		resultNumber *= 255.0f;
+		drawColorMod = resultNumber;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public float getDrawColor() {
+		return drawColorMod;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	/**
+	 *  Ziel dieser Methode ist es, die Pointer nach einem Kopiervorgang auf die neuen Kanten im
+	 *  EdgeManager umzubiegen => dafuer wird einfach jede Line uber ihren Index neu angefordert
+	 */
+	public void updateReferences() {
+		EdgeManager edgeManager = getEdgeManager();
+
+		for (int i = 0; i < mEdges.length; i++) {
+			String index = mEdges[i].getIndex();
+			mEdges[i] = edgeManager.getEdge(index, this);
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	/** Methode durchlaeuft alle Lines und holt deren Indices bis hinunter zu den Kindlines */
+	public Set<Integer> getAllIndices() {
+
+		Set<Integer> result = new HashSet<Integer>();
+
+		// durchlaufe alle gespeicherten Lines und hole saemtliche Indices
+		for (int i = 0; i < mEdges.length; i++) {
+			result.addAll(mEdges[i].getAllIndices());
+		}
+		return result;
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

@@ -1,0 +1,617 @@
+package skeleton.algorithm;
+
+import org.apache.log4j.Logger;
+
+import math.MyVector3f;
+import math.Plane;
+import math.Ray;
+import math.Vertex3d;
+/**
+ * @author Patrick Gunia
+ * Erweiterung der Standard-Vertex-Klasse zur Verwaltung von zusaetzlich
+ * benoetigten Informationen fuer den Straight-Skeleton-Algorithmus
+ * WICHTIG: alle Getter fuer Vektoren geben Deep-Copies zurueck!
+ */
+public class SkeletonVertex extends Vertex3d {
+	
+	/** Logger */
+	protected static Logger logger = Logger.getLogger("weightedstraightskeleton.skeletonalgorithm.skeletonvertex");
+	
+	/** Winkelhalbierende */
+	protected Ray mWinkelhalbierende;
+	
+	/** Switch zur Entscheidung, ob es sich um ein Reflex-Vertex handelt */
+	protected boolean mbIsReflexVertex;
+
+	/** Nachbar-Vertices des aktuell betrachteten Vertices */
+	protected SkeletonVertex[] mNeighbours;
+	
+	/** Buffer der Nachbarverarbeitung, haelt die urspruenglich gesetzten Nachbarn vor den reflexiven Updates vor */
+	protected SkeletonVertex[] mNeighbourBuffer;
+	
+	/** Adjazenten Kanten des Vertices zu den Nachbar-Vertices */
+	protected SkeletonEdge[] mNeighbourRays;
+	
+	/** Normalenvektor */
+	protected MyVector3f mNormal;
+	
+	/** Rotierte Winkelhalbierende, berechnet als Schnittgerade der adjazenten Planes am aktuellen Vertex */
+	protected Ray mRotatedWinkelhalbierende;
+	
+	/** Zum Vertex orthogonaler Vektor in der gleichen Ebene */
+	protected MyVector3f mOrtho;
+	
+	/** Durch den Schrumpfungsprozess entstandenes Kind-Vertex */
+	protected SkeletonVertex mChild;
+	
+	/**
+	 * wenn das Vertex im Shrink-Prozess seine finale Position erreicht hat, wird es als Processed markiert und nicht 
+	 * weiter geschrumpft
+	 */ 
+	protected boolean mProcessed;
+	
+	/** Wird auf true gesetzt, wenn es sich um ein Vertex handelt, das auf dem Skelett liegt */
+	protected boolean mSkeletonNode;
+	
+	/** Parent-Vertex des aktuellen Vertex */
+	protected SkeletonVertex mParent;
+		
+	/** Bei SplitEvents werden exakte Kopien erstellt, die in diesem vertex gespeichert werden */
+	protected SkeletonVertex mTwinVertex = null;
+	
+	/**
+	 *  Markiert, ob ein Vertex waehrend der Verarbeitung von Split- oder Vertex-Events bereits zu einem neuen Polygon hinzugefuegt wurde
+	 */
+	private boolean mAddedToNewPolygon = false;
+	
+	/** Bei Split- oder Vertex-Events markiert diese Variable, ob es sich um ein Original- oder ein Zwillingsvertex handelt */
+	private boolean mIsTwinVertex = false;
+	
+	/** Markiert, ob das Vertex im Zuge der Verarbeitung aus dem Child-Buffer geloescht wurde */
+	private boolean mIsDeleted = false;
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * 
+	 */
+	public SkeletonVertex() {
+		super();
+		init();
+	}
+	// ------------------------------------------------------------------------------------------
+	/** Utility-Methode zum Hinzufuegen von Nachbarvertices 
+	 * @param neighbour */
+	public void addNeighbourVertex(SkeletonVertex neighbour){
+		boolean addedNeighbour = false;
+		for(int i = 0; i < mNeighbours.length; i++) {
+			if(mNeighbours[i] == null) {
+				mNeighbours[i] = neighbour;
+				addedNeighbour = true;
+				break;
+			}
+		}
+		if(!addedNeighbour) {
+			logger.error("Das Nachbarvertex konnte nicht hinzugefuegt werden!");
+		}
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/** Methode fueg eine adjazente Kante zur Struktur hinzu 
+	 * @param neighbourRay */
+	public void addNeighbourEdge(SkeletonEdge neighbourRay) {
+		boolean addedNeighbourEdge = false;
+		for(int i = 0; i < mNeighbourRays.length; i++) {
+			if(mNeighbourRays[i] == null) {
+				mNeighbourRays[i] = neighbourRay;
+				addedNeighbourEdge = true;
+				break;
+			}
+		}
+		if(!addedNeighbourEdge) {
+			logger.error("Die adjazente Kante konnte nicht hinzugefuegt werden");
+		}
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param position
+	 */
+	public SkeletonVertex(MyVector3f position) {
+		super(position);
+		init();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return
+	 */
+	public Ray getWinkelhalbierende() {
+		return mWinkelhalbierende;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mWinkelhalbierende
+	 */
+	public void setWinkelhalbierende(Ray mWinkelhalbierende) {
+		this.mWinkelhalbierende = mWinkelhalbierende;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return
+	 */
+	public boolean isReflexVertex() {
+		return mbIsReflexVertex;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mbIsReflexVertex
+	 */
+	public void setIsReflexVertex(boolean mbIsReflexVertex) {
+		this.mbIsReflexVertex = mbIsReflexVertex;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public Ray getRotatedWinkelhalbierende() {
+		return mRotatedWinkelhalbierende;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public void setRotatedWinkelhalbierende(Ray mRotatedWinkelhalbierende) {
+		this.mRotatedWinkelhalbierende = mRotatedWinkelhalbierende;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public MyVector3f getNormal() {
+		// assert mNormal != null: "Normalenvektor ist null, Kopie kann nicht erzeugt werden";
+		if(mNormal == null) return null;
+		return mNormal.clone();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public MyVector3f getNormalPtr() {
+		return mNormal;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	public void setNormal(MyVector3f mNormal) {
+		if(mNormal != null) mNormal.normalizeRange();
+		this.mNormal = mNormal;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	public MyVector3f getOrtho() {
+		assert mOrtho != null: "Orthogonaler Vektor ist NULL";
+		return mOrtho.clone();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public MyVector3f getOrthoPtr() {
+		return mOrtho;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	public void setOrtho(MyVector3f mOrtho) {
+		mOrtho.normalizeRange();
+		this.mOrtho = mOrtho;
+	}
+	
+
+	// ------------------------------------------------------------------------------------------
+	public boolean isAddedToNewPolygon() {
+		return mAddedToNewPolygon;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	public void setAddedToNewPolygon(boolean mAddedToNewPolygon) {
+		this.mAddedToNewPolygon = mAddedToNewPolygon;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	private void init() {
+		mWinkelhalbierende = null;
+		mRotatedWinkelhalbierende = null;
+		mbIsReflexVertex = false;
+		mNeighbours = new SkeletonVertex[4];
+		mNeighbourBuffer = new SkeletonVertex[4];
+		for(int i = 0; i < mNeighbours.length; i++) {
+			mNeighbours[i] = null;
+			mNeighbourBuffer[i] = null;
+		}
+		
+		mNeighbourRays = new SkeletonEdge[2];
+		for(int i = 0; i < mNeighbourRays.length; i++) {
+			mNeighbourRays[i] = null;
+		}
+		mNormal = null;
+		mChild = null;
+		mProcessed = false;
+		mSkeletonNode = false;
+		mParent = null;
+		mTwinVertex = null;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * liefere den Nachbarstrahl mit Index dem uebergebenen Index zurueck
+	 * @param index Index der gesuchten Kante im Kantenarray
+	 * @return SkeletonEdge mit dem gesuchten Index
+	 */
+	public SkeletonEdge getNeighbourEdgeByIndex(int index) {
+				
+		if(index >= mNeighbourRays.length || index < 0) {
+			logger.error("SkeletonVertex.getNeighbourRay: Index out of Range");
+			return null;
+		}
+		else return mNeighbourRays[index];
+		
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode gibt den Nachbarn mit dem uebergebenen Index zurueck
+	 * @param index Index eds gesuchten Nachbarn innerhalb des Nachbararrays
+	 * @return Nachbar mit dem uebergebenen Zielindex, Null, wenn der Zielindex nicht definiert ist
+	 */
+	public SkeletonVertex getNeighbourByIndex(int index) {
+		
+		if(index >= mNeighbours.length || index < 0) {
+			logger.error("SkeletonVertex.getNeighbour: Index out of Range");
+			return null;
+		}
+		else return mNeighbours[index];
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	public SkeletonVertex getChild() {
+		return mChild;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public void setChild(SkeletonVertex mChild) {
+		this.mChild = mChild;
+	}
+	// ------------------------------------------------------------------------------------------
+	public boolean hasChild() {
+		if(mChild != null) return true;
+		else return false;
+	}
+	// ------------------------------------------------------------------------------------------
+	public SkeletonVertex getParent() {
+		return mParent;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public void setParent(SkeletonVertex mParent) {
+		this.mParent = mParent;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	public boolean hasParent() {
+		if(mParent != null) return true;
+		else return false;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public boolean isProcessed() {
+		return mProcessed;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public boolean isTwinVertex() {
+		return mIsTwinVertex;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public void setIsTwinVertex(boolean mIsTwinVertex) {
+		this.mIsTwinVertex = mIsTwinVertex;
+	}
+	// ------------------------------------------------------------------------------------------
+	/** 
+	 * Methode legt ein Backup des Nachbararrays an, bevor dieses bidirektional aktualisiert wird.
+	 */
+	public void copyNeighbourBuffer() {
+		for(int i = 0; i < mNeighbours.length; i++) {
+			mNeighbourBuffer[i] = mNeighbours[i];
+		}
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Nachdem die Verarbeitung auf der jweiligen Iteration abgeschlossen wurde, setzt man den Neighbour-Buffer zurueck
+	 */
+	public void clearNeighbourBuffer() {
+		for(int i = 0; i < mNeighbours.length; i++) {
+			mNeighbourBuffer[i] = null;
+		}
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * 
+	 */
+	public void setProcessed(boolean mProcessed) {
+		this.mProcessed = mProcessed;
+		
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = super.hashCode();
+		result = prime * result + (mIsTwinVertex ? 1231 : 1237);
+		result = prime * result + ((mNormal == null) ? 0 : mNormal.hashCode());
+		result = prime * result + ((mOrtho == null) ? 0 : mOrtho.hashCode());
+		result = prime * result + (mSkeletonNode ? 1231 : 1237);
+		result = prime * result + (mbIsReflexVertex ? 1231 : 1237);
+		return result;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (!super.equals(obj))
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		SkeletonVertex other = (SkeletonVertex) obj;
+		if (!comparePositionsWithTolerance(mPosition, other.mPosition))
+			return false;
+		if (mIsTwinVertex != other.mIsTwinVertex)
+			return false;
+		if (mNormal == null) {
+			if (other.mNormal != null)
+				return false;
+		} else if (!mNormal.equals(other.mNormal))
+			return false;
+		if (mOrtho == null) {
+			if (other.mOrtho != null)
+				return false;
+		} else if (!mOrtho.equals(other.mOrtho))
+			return false;
+		
+		
+		/*
+		if (Float.floatToIntBits(mSplitVertexDistance) != Float
+				.floatToIntBits(other.mSplitVertexDistance))
+			return false;
+		*/
+		if (mbIsReflexVertex != other.mbIsReflexVertex)
+			return false;
+		return true;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Berechnet den auessersten Vorfahr des aktuell Knoten, also denjenigen Knoten im Graph, der keinen
+	 * Elternknoten besitzt
+	 * 
+	 * @return Aeusserter Elternknoten auf dem Weg durch den Graph
+	 * @deprecated
+	 */
+	@Deprecated
+	public SkeletonVertex getOutermMostParent() {
+		SkeletonVertex parent = getParent();
+		
+		while(parent.hasParent()) {
+			parent = parent.getParent();
+		}
+		return parent;
+	}
+	// ------------------------------------------------------------------------------------------
+	public void setDeleted(boolean deleted) {
+		mIsDeleted = deleted;
+	}
+	// ------------------------------------------------------------------------------------------
+	public boolean isDeleted() {
+		return mIsDeleted;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	public boolean isSkeletonNode() {
+		return mSkeletonNode;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public void setSkeletonNode(boolean mSkeletonNode) {
+		this.mSkeletonNode = mSkeletonNode;
+	}
+	// ------------------------------------------------------------------------------------------
+	public boolean hasNeighbourWithIndex(int index) {
+		if(mNeighbours[index] != null) return true;
+		else return false;
+	}
+	// ------------------------------------------------------------------------------------------
+	public void setNeighbourOnIndex(int index, SkeletonVertex neighbour) {
+		if(hasNeighbourWithIndex(index)) {
+			logger.debug("SkeletonVertex.setNeighbourWithIndex: Ersetze Nachbar + " + mNeighbours[index] + "  mit Index " + index + " durch " + neighbour + " in Vertex: " + this);
+		}
+		mNeighbours[index] = neighbour;
+	}
+	// ------------------------------------------------------------------------------------------
+	public SkeletonVertex[] getNeighbours() {
+		return mNeighbours;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public boolean hasNeighbours() {
+		if(mNeighbours[0] != null && mNeighbours[1] != null) return true;
+		else return false;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * bekommt als Uebergabe ein Vertex uebergeben, sofern dieses bereits als Neighbour gesetzt wurde,
+	 * gibt die Methode den Index des Neighbours zurueck, sonst -1
+	 * @param neighbour SkeletonVertex, dessen Index innerhalb der Nachbarstruktur gesucht werden soll
+	 * @return Index innerhalb der Nachbarstrukturen, an dem sich das gesuchte Vertex befindet, -1 sonst
+	 */
+	public int getIndexForNeighbour(SkeletonVertex neighbour) {
+		
+		for(int i = 0; i < mNeighbours.length; i++) {
+			if(mNeighbours[i] != null) {
+				if(mNeighbours[i] == neighbour) return i;
+			}
+		}
+	
+		return -1;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * bekommt als Uebergabe ein Vertex uebergeben, sofern dieses bereits als Neighbour gesetzt wurde,
+	 * gibt die Methode den Index des Neighbours zurueck, sonst -1
+	 * @param neighbour 
+	 * @return 
+	 */
+	public int getIndexForNeighbourInBuffer(SkeletonVertex neighbour) {
+		
+		for(int i = 0; i < mNeighbourBuffer.length; i++) {
+			if(mNeighbourBuffer[i] != null) {
+				if(mNeighbourBuffer[i] == neighbour) return i;
+			}
+		}
+	
+		return -1;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @param index
+	 * @return
+	 */
+	public SkeletonVertex getNeighbourByIndexFromBuffer(int index) {
+	
+		if(index >= mNeighbourBuffer.length || index < 0) {
+			logger.error("SkeletonVertex.getNeighbourByIndexFromBuffer: Index out of Range");
+			return null;
+		}
+		else return mNeighbourBuffer[index];
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	public SkeletonVertex[] getNeighbourBuffer() {
+		return mNeighbourBuffer;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Fuehrt eine clone-Operation der Komponenten durch, die nicht nur fuer den Algorithmus relevant sind (bsw. SplitPlanes, 
+	 * Bisectors etc.)
+	 */
+	public SkeletonVertex cloneBasicComponents() {
+		SkeletonVertex result = new SkeletonVertex();
+		result.setPosition(this.getPosition());
+		result.setNormal(this.getNormal());
+		return result;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Clone-Methode fuer Skeleton-Vertices => aktuell nicht kopiert werden Kinder, Nachbarn und Nachbarstrahlen
+	 */
+	@Override
+	public SkeletonVertex clone() {
+		SkeletonVertex result = new SkeletonVertex();
+		if(mPosition != null) result.setPosition(getPosition());
+		result.setProcessed(mProcessed);
+		if(hasParent()) result.setParent(mParent);
+		if(mWinkelhalbierende != null) result.setWinkelhalbierende(mWinkelhalbierende.clone());
+		result.setIsReflexVertex(mbIsReflexVertex);
+		if(mNormal != null) result.setNormal(getNormal());
+		if(mRotatedWinkelhalbierende != null) result.setWinkelhalbierende(mRotatedWinkelhalbierende.clone());
+		if(mOrtho != null) result.setOrtho(getOrtho());
+		result.setSkeletonNode(mSkeletonNode);		
+		return result;
+	}
+	// ------------------------------------------------------------------------------------------
+	public SkeletonVertex getTwinVertex() {
+		return mTwinVertex;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public void setTwinVertex(SkeletonVertex mTwinVertex) {
+		this.mTwinVertex = mTwinVertex;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public boolean hasTwinVertex() {
+		if(mTwinVertex != null) {
+			return true;
+		}
+		else return false;
+	}
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public String toString() {
+		String message = getPositionPtr().toString();
+		if(isTwinVertex()) message += " Twin-Vertex";
+		if(isReflexVertex()) message += " Reflex-Vertex";
+		return message;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert das unterste Kind in der Hierarchie (beruecksichtigt dabei aber keine
+	 * Zwillingsvertices
+	 * @return SkeletonVertex Das unterste Kind in der Vererbungshierarchie
+	 */
+	public SkeletonVertex getInnerMostChild(){
+		
+		SkeletonVertex current = null, child = null;
+		current = this;
+		
+		while(current.hasChild()) {
+			
+			// sobald das Vertex einen Event ausgeloest hat, kann sich die Richtung vollstaendig aendern
+			// in diesem Fall kann die Genauigkeit nicht mehr bestimmt werden
+			if(current.isProcessed()) return current;
+			current = current.getChild();
+		}
+		
+		return current;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet die Slope-Planes fuer die gespeicherten Skeleton-Edge-Kanten 
+	 * @param algorithm Wird fuer den Zugriff auf den SlopePlaneService benoetigt
+	 */
+	public void computeSlopePlanes(StraightSkeleton algorithm) {
+		for(int i = 0; i < mNeighbourRays.length; i++) {
+			logger.debug("BERECHNE SLOPEPLANE FUER NACHBAR MIT INDEX: " + i);
+			mNeighbourRays[i].calculateSlopePlane(algorithm);
+		}
+	}
+	// ------------------------------------------------------------------------------------------
+	/** 
+	 * Methode gibt die Nachbarn des aktuellen Vertex aus
+	 * @return Ausgabe des aktuellen Vertex inklusive seiner Nachbarn
+	 */
+	public String printNeighbours() {
+		
+		String lineSeparator = System.getProperty("line.separator");
+		String message = lineSeparator + this.toString() + lineSeparator;
+		for(int i = 0; i < mNeighbours.length; i++) {
+			if(mNeighbours[i] == null) continue; 
+			message += ".......................... " + i + ": " + mNeighbours[i].toString() + lineSeparator;
+		}
+		return message;
+		
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

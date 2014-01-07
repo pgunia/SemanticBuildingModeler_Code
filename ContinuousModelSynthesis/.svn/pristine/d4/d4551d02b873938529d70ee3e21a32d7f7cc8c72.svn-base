@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+    <smcb_eb:exampleBased xmlns="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/ExampleBasedSynthesis"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:smcb_eb="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/ExampleBasedSynthesis"
+        xmlns:smcb_ct="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/CommonTypes"
+        xsi:schemaLocation="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/ExampleBasedSynthesis http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/ExampleBasedSynthesis/ExampleBasedSynthesisSchema.xsd">
+        <smcb_ct:polygonSource>
+            <smcb_ct:exampleClass>RectFootprint</smcb_ct:exampleClass>
+        </smcb_ct:polygonSource>
+        <smcb_eb:firstComponentType>EDGE</smcb_eb:firstComponentType>
+        <smcb_eb:cornerCount>1</smcb_eb:cornerCount>
+        <smcb_eb:reflexCornerCount>1</smcb_eb:reflexCornerCount>
+        <smcb_eb:edgeCount>-1</smcb_eb:edgeCount>
+        <smcb_eb:insideCount>-1</smcb_eb:insideCount>
+        <smcb_eb:outsideCount>-1</smcb_eb:outsideCount>
+        <smcb_eb:randomComponentChoice>true</smcb_eb:randomComponentChoice>
+        <smcb_eb:randomStateChoice>true</smcb_eb:randomStateChoice>
+        <smcb_eb:consistencyConstraint>true</smcb_eb:consistencyConstraint>
+        <smcb_eb:onlyRayComponents>false</smcb_eb:onlyRayComponents>
+        <smcb_eb:onlyVertexComponents>false</smcb_eb:onlyVertexComponents>
+        <smcb_eb:cornerVoteBoost>8</smcb_eb:cornerVoteBoost>
+        <smcb_eb:reflexCornerVoteBoost>6</smcb_eb:reflexCornerVoteBoost>
+        <smcb_eb:edgeVoteBoost>1</smcb_eb:edgeVoteBoost>
+        <smcb_eb:outsideVoteBoost>1</smcb_eb:outsideVoteBoost>
+        <smcb_eb:insideVoteBoost>1</smcb_eb:insideVoteBoost>
+        <smcb_eb:numberOfParallelRays>8</smcb_eb:numberOfParallelRays>
+        <smcb_eb:parallelRayDistance>157.23</smcb_eb:parallelRayDistance>
+        <smcb_eb:parallelRayDistanceRuleComputation>17.93</smcb_eb:parallelRayDistanceRuleComputation>
+        <smcb_eb:randomGrowth>false</smcb_eb:randomGrowth>
+    </smcb_eb:exampleBased>
+

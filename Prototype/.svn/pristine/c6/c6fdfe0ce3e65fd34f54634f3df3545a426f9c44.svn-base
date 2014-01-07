@@ -1,0 +1,445 @@
+package semantic.city.builder.prototype.building;
+
+import java.io.File;
+import java.util.Map;
+
+import processing.core.PApplet;
+import semantic.city.builder.configurationservice.model.BuildingConfiguration;
+import semantic.city.builder.configurationservice.model.BuildingDimensionsConfiguration;
+import semantic.city.builder.configurationservice.model.ClassBasedFootprintConfiguration;
+import semantic.city.builder.configurationservice.model.ExampleBasedFootprintConfiguration;
+import semantic.city.builder.configurationservice.model.FloorConfiguration;
+import semantic.city.builder.configurationservice.model.FootprintDescriptor;
+import semantic.city.builder.configurationservice.model.ObjectPlacementFootprintConfiguration;
+import semantic.city.builder.configurationservice.model.PolygonFootprintConfiguration;
+import semantic.city.builder.configurationservice.model.PolygonSourceConfiguration;
+import semantic.city.builder.configurationservice.model.component.DoorComponentConfiguration;
+import semantic.city.builder.configurationservice.model.component.FasciaComponentConfiguration;
+import semantic.city.builder.configurationservice.model.component.MouldingComponentConfiguration;
+import semantic.city.builder.configurationservice.model.component.PillarComponentConfiguration;
+import semantic.city.builder.configurationservice.model.component.WindowComponentConfiguration;
+import semantic.city.builder.configurationservice.model.component.WindowLedgeComponentConfiguration;
+import semantic.city.builder.configurationservice.model.enums.BuildingComponentType;
+import semantic.city.builder.configurationservice.model.enums.FloorPosition;
+import semantic.city.builder.configurationservice.model.enums.ModelCategory;
+import semantic.city.builder.configurationservice.model.enums.ReuseFloorEnum;
+import semantic.city.builder.math.MyPolygon;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.MyVectormath;
+import semantic.city.builder.math.Plane;
+import semantic.city.builder.math.Plane.CoordinatePlane;
+import semantic.city.builder.modelsynthesis.controller.ModelSynthesisController;
+import semantic.city.builder.prototype.building.footprint.AbstractFootprint;
+import semantic.city.builder.prototype.service.ObjectPositioningService;
+
+/**
+ * Klasse dient zur Modellierung von Gebaeuden, deren Struktur vollstaendig von
+ * aussen steuerbar ist. Es soll hiermit moeglich sein, saemtliche relevanten
+ * Parameter zur Gebaeudeerzeugung ueber Konfigurationsdateien festzuelegen. Die
+ * Gebaeudeerzeugung folgt dabei einer Interpreter-Logik, bei der die
+ * Konfiguration als Bauplan fuer die konkreten Gebaeude verwendet wird
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public class ArbitraryBuilding extends AbstractBuilding {
+
+	public ArbitraryBuilding(final PApplet applet, final MyVector3f position,
+			final BuildingConfiguration buildingConf) {
+		super(applet, position, buildingConf);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "Arbitrary";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void create() {
+
+		final BuildingConfiguration conf = (BuildingConfiguration) mConf;
+
+		computeBuildingDimensions();
+		final Map<FloorPosition, FloorConfiguration> floors = conf
+				.getFloorsConfig();
+
+		float currentHeight = 0.0f;
+		FloorPosition curFloorPosition = null;
+		MyPolygon footprint = null;
+		FloorConfiguration floorConfig = null;
+		int numberOfFloors = mDimensions.getNumberOfFloors();
+
+		// Konstruiere entweder alle Stockwerke basierend auf dem gleichen
+		// Floor-Descriptor
+		if (floors.containsKey(FloorPosition.ALL)) {
+
+			floorConfig = floors.get(FloorPosition.ALL);
+			float height = mDimensions.getFloorHeights().get(FloorPosition.ALL);
+
+			// erzeuge den initialen Grundriss
+			footprint = resolveFootprint(createDescriptor(floorConfig));
+
+			for (int i = 0; i < numberOfFloors; i++) {
+				curFloorPosition = resolveFloorPosition(i, numberOfFloors);
+				currentHeight = createFloor(footprint, currentHeight, height,
+						curFloorPosition);
+			}
+		}
+		// oder fuehre eine Verarbeitung durch, die zwischen den
+		// unterschiedlichen Stockwerkstypen unterscheidet
+		else {
+
+			for (int i = 0; i < numberOfFloors; i++) {
+				curFloorPosition = resolveFloorPosition(i, numberOfFloors);
+
+				LOGGER.debug("Verarbeite Stockwerk an Position: "
+						+ curFloorPosition);
+
+				floorConfig = floors.get(curFloorPosition);
+
+				assert floorConfig != null : "FEHLER: Keine Stockwerkskonfiguration fuer Position '"
+						+ curFloorPosition + "'.";
+				footprint = resolveFootprint(createDescriptor(floorConfig));
+
+				currentHeight = createFloor(footprint, currentHeight,
+						mDimensions.getFloorHeights().get(curFloorPosition),
+						curFloorPosition);
+			}
+		}
+
+		// Komponenten an Gebaeuden anbringen
+		final ObjectPositioningService posService = ObjectPositioningService
+				.getInstance();
+
+		// Tuer
+		if (conf.getComponentConfigurationByType(BuildingComponentType.DOOR) != null) {
+			posService
+					.addDoor(
+							mBuilding,
+							(DoorComponentConfiguration) conf
+									.getComponentConfigurationByType(BuildingComponentType.DOOR));
+		}
+
+		// Fenster
+		if (conf.getComponentConfigurationByType(BuildingComponentType.WINDOW) != null) {
+			posService
+					.addWindows(
+							mBuilding,
+							(WindowComponentConfiguration) conf
+									.getComponentConfigurationByType(BuildingComponentType.WINDOW));
+		}
+
+		// Fensterbank
+		if (conf.getComponentConfigurationByType(BuildingComponentType.WINDOWLEDGE) != null) {
+			posService
+					.addWindowLedges(
+							mBuilding,
+							(WindowLedgeComponentConfiguration) conf
+									.getComponentConfigurationByType(BuildingComponentType.WINDOWLEDGE));
+		}
+
+		// Saeulen
+		if (conf.getComponentConfigurationByType(BuildingComponentType.PILLAR) != null) {
+			posService
+					.addPillars(
+							mBuilding,
+							(PillarComponentConfiguration) conf
+									.getComponentConfigurationByType(BuildingComponentType.PILLAR));
+		}
+
+		// Fascia
+		if (conf.getComponentConfigurationByType(BuildingComponentType.FASCIA) != null) {
+			posService
+					.addFascia(
+							mBuilding,
+							(FasciaComponentConfiguration) conf
+									.getComponentConfigurationByType(BuildingComponentType.FASCIA));
+		}
+
+		// Gesimse
+		if (conf.getComponentConfigurationByType(BuildingComponentType.MOULDING) != null) {
+			posService
+					.addMoulding(
+							mBuilding,
+							(MouldingComponentConfiguration) conf
+									.getComponentConfigurationByType(BuildingComponentType.MOULDING));
+		}
+
+		finalizeBuilding();
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode uebersetzt die Stockwerkindices in FloorPosition-Enum-Werte
+	 * 
+	 * @param curFloorIndex
+	 *            Index des aktuell verarbeiteten Stockwerks
+	 * @param numberOfFloors
+	 *            Gesamtanzahl an Stockwerken
+	 * @return FloorPosition-Wert
+	 */
+	private FloorPosition resolveFloorPosition(int curFloorIndex,
+			int numberOfFloors) {
+		if (curFloorIndex == 0) {
+			return FloorPosition.GROUND;
+		} else if (curFloorIndex == (numberOfFloors - 1)) {
+			return FloorPosition.TOP;
+		} else {
+			return FloorPosition.INTERMEDIATE;
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode dient der Berechnung von Footprints basiernd auf Parametern aus
+	 * den Konfigurationsdateien. Dabei sind mehrere unterschiedliche Ansaetze
+	 * moeglich, bsw. das Laden des Grundrisses aus einer Modeldatei oder die
+	 * Initialisierung von Footprintklassen. Auch zufallsbasierte Footprints
+	 * koennen so erzeugt werden.
+	 * 
+	 * @param descriptor
+	 *            Konfigurationsobjekt, dass saemtliche Parameter fuer die
+	 *            Footprinterzeugung enthaelt
+	 * @return Polygon, das den zu verwendenden Grundriss beschreibt
+	 */
+	public MyPolygon resolveFootprint(final FootprintDescriptor descriptor) {
+
+		MyPolygon resultFootprint = null;
+		final String footprintType = descriptor.getType();
+		final MyVector3f footprintNormal = new MyVector3f(0.0, -1.0f, 0.0f);
+
+		// abhaengig von der Quelle des Footprints erfolgt die Verarbeitung /
+		// Erzeugung des Footprints unterschiedlich
+		// Footprint basiert auf einer Java-Klasse
+		if (footprintType.equals("ClassBasedFootprint")) {
+
+			// der String ist die Bezeichnung einer Klasse
+			// erzeuge eine Instanz der Klasse, die von AbstractFootprint
+			// abgeleitet sein muss
+			final ClassBasedFootprintConfiguration classBasedConf = (ClassBasedFootprintConfiguration) descriptor
+					.getConf();
+			resultFootprint = getFootprintByClassName(
+					classBasedConf.getClassName(),
+					descriptor.getBuildingWidth(),
+					descriptor.getBuildingLength());
+
+		}
+		// Footprint wird ueber das Synthese-Verfahren basierend auf einem
+		// Beispielgrundriss synthetisiert
+		else if (footprintType.equals("ExampleBasedFootprint")) {
+
+			final ExampleBasedFootprintConfiguration exampleBased = (ExampleBasedFootprintConfiguration) descriptor
+					.getConf();
+			final MyPolygon examplePoly = resolveFootprintFromFootprintConfig(
+					exampleBased.getPolySourceConfiguration(),
+					descriptor.getBuildingWidth(),
+					descriptor.getBuildingLength());
+			final ModelSynthesisController modelSynthesis = new ModelSynthesisController(
+					examplePoly, exampleBased);
+			resultFootprint = modelSynthesis.getResultFootprint();
+		}
+
+		// Footprint wird ueber das Objectplacementverfahren basierend auf einem
+		// Basisgrundriss erzegut
+		else if (footprintType.equals("ObjectplacementFootprint")) {
+			final ObjectPlacementFootprintConfiguration objectplacementConf = (ObjectPlacementFootprintConfiguration) descriptor
+					.getConf();
+			final MyPolygon examplePoly = resolveFootprintFromFootprintConfig(
+					objectplacementConf.getPolySourceConfiguration(),
+					descriptor.getBuildingWidth(),
+					descriptor.getBuildingLength());
+			resultFootprint = modifyFootprint(examplePoly, objectplacementConf);
+
+		}
+		// Footprint wird aus einer 3D-Datei geladen
+		else if (footprintType.equals("PolygonFootprint")) {
+			final PolygonFootprintConfiguration polyConf = (PolygonFootprintConfiguration) descriptor
+					.getConf();
+			resultFootprint = ObjectPositioningService.getInstance()
+					.loadFootprint(polyConf.getModelFile());
+
+		}
+		// verwende einen vorhergehenden Grundriss erneut
+		else if (footprintType.equals("ReuseFootprint")) {
+			final ReuseFloorEnum reuse = descriptor.getReuseFloor();
+			final MyPolygon reuseFloor = mReuseFloorMap.get(reuse);
+			assert reuseFloor != null : "FEHLER: Fuer '" + reuse
+					+ "' existeirt noch keine Polygondefinition!";
+			resultFootprint = reuseFloor;
+		}
+
+		// zeigt die Footprint-Normale in die richtige Richtung? Sonst Vertices
+		// switchen
+		if (MyVectormath.getInstance().isAntiparallel(footprintNormal,
+				resultFootprint.getNormalPtr())) {
+			resultFootprint.switchVertexOrder();
+			LOGGER.debug("SWITCHED VERTEX-ORDER");
+		}
+
+		// aktualisiere die Map, welche die vorab bereits verwendeten Footprints
+		// enthaelt, fuer den folgenden Durchlauf
+		mReuseFloorMap.put(ReuseFloorEnum.PREVIOUS, resultFootprint);
+		if (mReuseFloorMap.get(ReuseFloorEnum.GROUND) == null) {
+			mReuseFloorMap.put(ReuseFloorEnum.GROUND, resultFootprint);
+		}
+
+		return resultFootprint;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode instantiiert eine Footprint-Klasse und liefert das in dieser
+	 * definierte Grundrisspolygon zurueck
+	 * 
+	 * @param className
+	 *            Name der Grundrissklasse
+	 * @param buildingWidth
+	 *            Gebaeudebreite
+	 * @param buildingHeight
+	 *            Gebeaudelaenge
+	 * @return Grundriss
+	 */
+	private MyPolygon getFootprintByClassName(final String className,
+			final Float buildingWidth, final Float buildingLength) {
+
+		final Plane targetPlane = new Plane(CoordinatePlane.XZ);
+
+		// per Reflection eine Instanz der Footprint-Klasse erzeugen
+		try {
+			final String classPath = "prototype.building.footprint."
+					+ className;
+			final Class<?> footprintClass = Class.forName(classPath);
+			final AbstractFootprint footprintInstance = (AbstractFootprint) footprintClass
+					.getConstructor(Plane.class, Double.TYPE, Double.TYPE)
+					.newInstance(targetPlane, buildingWidth, buildingLength);
+
+			// gebe zunaechst immer nur den ersten gespeicherten Footprint
+			// zurueck (das scheitert bei zusammengesetzten Grundrissen, die
+			// werden aber sowieso eher ueber Profile erzeugt)
+			return footprintInstance.getFootprints().get(0);
+
+		} catch (Exception e) {
+			e.printStackTrace();
+			return null;
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode dient der Verarbeitung von Poly-Footprint-Deskriptoren. Diese
+	 * werden bei allen Verfahren, die Eingabepolygone benoetigen, eingesetzt.
+	 * 
+	 * @param polySource
+	 *            Konfigruationsobjekt, das angibt, woher der Grundriss stammt
+	 * @param buildingWidth
+	 *            Gebauedebreite
+	 * @param buildingLength
+	 *            Gebaeudehoehe
+	 * @return Grundrisspolygon
+	 */
+	private MyPolygon resolveFootprintFromFootprintConfig(
+			final PolygonSourceConfiguration polySource,
+			final Float buildingWidth, final Float buildingLength) {
+
+		// woher stammt der Beispielgrundriss?
+		String srcType = polySource.getSrcType();
+		MyPolygon srcPoly = null;
+		// Java-Klasse
+		if (srcType.equals("Class")) {
+			// per Reflection eines Instanz erzeugen
+			srcPoly = getFootprintByClassName(polySource.getExampleClassName(),
+					buildingWidth, buildingLength);
+		}
+		// in einer XML-Datei definiertes Polygon
+		else if (srcType.equals("XMLPolygon")) {
+			srcPoly = polySource.getExamplePoly();
+		}
+		// in einer 3d-Modelldatei definiertes Grundrisspolygon
+		else if (srcType.equals("File")) {
+			File srcFile = polySource.getFile();
+			srcPoly = ObjectPositioningService.getInstance().loadFootprint(
+					srcFile);
+
+		}
+		// Grundriss stammt aus einer Grundrisskategorie
+		else if (srcType.equals("FootprintCategory")) {
+			srcPoly = ObjectPositioningService.getInstance().loadFootprint(
+					ModelCategory.valueOf(polySource.getFootprintCategory()));
+		}
+		// verwende einen vorherigen Grundriss erneut
+		else if (srcType.equals("ReuseFloor")) {
+			return mReuseFloorMap.get(polySource.getReuse());
+		}
+		return srcPoly;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erzeugt eine Instanz der Footprint-Descriptor-Klasse, die fuer
+	 * die Erzeugung von Grundrissen verwendet wird
+	 * 
+	 * @param floorConf
+	 *            Instanz der Stockwerkskonfiguration
+	 * @param buildingWidth
+	 *            Gebaeudebreite
+	 * @param buildingLength
+	 *            Gebaeudehoehe
+	 * @return FootprintDescriptor-Instanz
+	 */
+	private FootprintDescriptor createDescriptor(
+			final FloorConfiguration floorConf) {
+
+		FootprintDescriptor result = new FootprintDescriptor();
+		result.setBuildingLength(mDimensions.getLength());
+		result.setBuildingWidth(mDimensions.getWidth());
+
+		// Wiederverwendung?
+		final ReuseFloorEnum reuse = floorConf.getReuseFloorSource();
+		if (reuse != null) {
+			result.setReuseFloor(reuse);
+		}
+		// sonst Config
+		else {
+			result.setConf(floorConf.getFootprint());
+		}
+		return result;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet Gebaeude- und Stockwerksausdehnungen anhand der
+	 * uebergebenen Gebaeudekonfiguration
+	 */
+	protected void computeBuildingDimensions() {
+
+		final BuildingConfiguration conf = (BuildingConfiguration) mConf;
+
+		// verwende das gespeicherte Konfigurationsobjekt und lade saemtliche
+		// Floor-Konfigurationen
+		final BuildingDimensionsConfiguration dimensions = conf.getDimensions();
+		final Map<FloorPosition, FloorConfiguration> floors = conf
+				.getFloorsConfig();
+
+		// bestimme die Stockwerkshoehen und die Anzahl an Stockwerken
+		final Map<FloorPosition, Float> floorHeights = getFloorHeights(floors);
+		float buildingHeight = dimensions.getHeight().getRandValueWithinRange();
+
+		mDimensions = new BuildingDimensions(dimensions.getLength()
+				.getRandValueWithinRange(), dimensions.getWidth()
+				.getRandValueWithinRange(), buildingHeight,
+				getFloorHeights(floors), getNumberOfFloors(buildingHeight,
+						floorHeights));
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

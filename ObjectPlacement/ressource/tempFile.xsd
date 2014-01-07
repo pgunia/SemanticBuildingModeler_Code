@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    targetNamespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Objectplacement"
+    elementFormDefault="qualified" attributeFormDefault="unqualified"
+    xmlns:smcb_ct="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/CommonTypes"
+    xmlns:smcb_op="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Objectplacement"> 
+    
+    <xs:import
+        namespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/CommonTypes"
+        schemaLocation="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/CommonTypes/CommonTypes.xsd"/>
+    
+    <xs:element name="objectplacement">
+        <xs:annotation>
+            <xs:documentation xml:lang="en"> Objectplacement-Footprints are created using the
+                Objectplacement-Algorithm. This algorithm places components (e.g. rectangles) on a starting
+                component and joins them together into a single polygon which is then used as footprint.
+            </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:all>
+                <xs:element ref="smcb_ct:polygonSource" />
+                <xs:element name="maxCornerMainComponentDimensionsRatio" type="xs:float" default="0.4"
+                    minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Ratio between the height and width of subcomponents
+                            which are positioned on corners of the maincomponent compared to the dimensions of the
+                            maincomponent. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="maxNumberOfRetriesPerRay" type="xs:integer" default="10" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Number of times the algorithm tries to position
+                            subcomponents on edges of the maincomponent. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="maxNumberOfSubcomponentsPerRay" type="xs:integer" default="1">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Upper border of subcomponents which can be positioned
+                            on each edge of the maincomponent. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="maxSubMainComponentWidthRatio" type="xs:float" default="100.0"
+                    minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Max-Value for the Ratio of the Subcomponent-Width and
+                            the length of the raysegment on which the component is positioned. This parameter is
+                            meant to prevent subcomponents whose width is much bigger than the ray-segment´s
+                            width. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                
+                <xs:element name="minNumberOfFreeBlocks" type="xs:integer" default="3" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Minimum number of free blocks between positioned
+                            subcomponents on a maincomponent-edge. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="minSubcomponentSizeInBlocks" type="xs:integer" default="4">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Minimum size of subcomponents which are positioned
+                            measured in blocks. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                
+                <xs:element name="heightWidthRatioComponents" type="smcb_ct:rangeOTo1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Ratio of subcomponent-height to subcomponent-width.
+                        </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                
+                <xs:element name="placementScalingSubcomponents" type="smcb_ct:rangeOTo1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Rescaling-factor for positioned subcomponents.
+                        </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="placementScalingMaincomponents" type="smcb_ct:rangeOTo1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Rescaling-factor for positioned maincomponents.
+                        </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element ref="smcb_op:allowedSubcomponentTypes" />
+                <xs:element name="minMainToSubcomponentDeviance" type="xs:float" minOccurs="0"
+                    default="0.07">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Minimum ratio between sub- and maincomponent width so
+                            that the subcomponent is still positioned. Parameter is meant to prevent subcomponents
+                            having the same width as the maincomponent they are positioned on. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element ref="smcb_op:placementProbability"> </xs:element>
+                <xs:element name="numberOfIterations" type="xs:positiveInteger" default="1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en">
+                            Number of iterations the placement algorithm should perform. A number bigger than 1 positions subcomponents on previously added subcomponents a.s.o.
+                        </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+            </xs:all>
+        </xs:complexType>
+    </xs:element>
+    
+    <xs:simpleType name="subcomponentTypes">
+        <xs:annotation>
+            <xs:documentation xml:lang="en"> Enumeration-Datatype which defines which subcomponents may be
+                used by the algorithm. </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="CylindricComponent"/>
+            <xs:enumeration value="FreeComponent"/>
+            <xs:enumeration value="RectComponent"/>
+        </xs:restriction>
+    </xs:simpleType>
+    
+    <xs:element name="allowedSubcomponentTypes">
+        <xs:complexType>
+            <xs:sequence maxOccurs="unbounded">
+                <xs:element name="type" type="smcb_op:subcomponentTypes"/>
+            </xs:sequence>
+        </xs:complexType>
+    </xs:element>
+    
+    <xs:element name="placementProbability">
+        <xs:annotation>
+            <xs:documentation xml:lang="en"> This element contains a number of parameters which are used
+                to control the random-positioning-process. </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:all>
+                <xs:element name="symmetry" type="smcb_ct:floatFrom0To1" default="0.0" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Probability that subcomponents are positioned
+                            symmetrically on opposite edges of the maincomponent. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="positionSubComponentsOnCorners" type="smcb_ct:floatFrom0To1" default="0.0"
+                    minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Probability that the system positiones subcomponents of
+                            corners of the maincomponent. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="positionCylinders" type="smcb_ct:floatFrom0To1" default="0.3" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Probability that cylinders are used as subcomponents.
+                        </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="positionComponentsOnEdge" type="smcb_ct:floatFrom0To1" default="1.0"
+                    minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Probability that subcomponents are positioned on edges
+                            of the maincomponent. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="positionOnCenter" type="smcb_ct:floatFrom0To1" default="0.3" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Probability that subcomponents are positioned on the
+                            center of a maincomponent-edge. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="convexHull" type="smcb_ct:floatFrom0To1" default="0.0" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Probability that the algorithm uses a convex hull
+                            implementation to compute the result-polygon based on the main- and
+                            subcomponent-positionings. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+            </xs:all>
+        </xs:complexType>
+    </xs:element>
+</xs:schema>

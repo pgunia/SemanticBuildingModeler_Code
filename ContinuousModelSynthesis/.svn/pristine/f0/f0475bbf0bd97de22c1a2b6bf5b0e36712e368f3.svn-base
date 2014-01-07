@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<building
+	xmlns="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Building"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xmlns:fl="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Floor"
+	xmlns:fp="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Footprint"
+	xmlns:ct="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/CommonTypes"
+	xmlns:ro="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Roof"
+	xmlns:bu="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Building"
+	xmlns:co="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Component"
+	xsi:schemaLocation="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Building http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Building/BuildingSchema.xsd">
+	<dimensions>
+		<bu:buildingWidth>
+			<ct:lowerBorder>120.0</ct:lowerBorder>
+			<ct:upperBorder>180.0</ct:upperBorder>
+		</bu:buildingWidth>
+		<bu:buildingHeight>
+			<ct:lowerBorder>150.0</ct:lowerBorder>
+			<ct:upperBorder>190.0</ct:upperBorder>
+		</bu:buildingHeight>
+		<bu:buildingLength>
+			<ct:lowerBorder>75.0</ct:lowerBorder>
+			<ct:upperBorder>95.0</ct:upperBorder>
+		</bu:buildingLength>
+		<bu:wallThickness>3.0</bu:wallThickness>
+	</dimensions>
+	<ro:roof>
+		<ro:RoofDescriptor>
+			<ro:RoofSlopeMain>
+				<ro:lowerBorder>1.0</ro:lowerBorder>
+				<ro:upperBorder>1.2</ro:upperBorder>
+			</ro:RoofSlopeMain>
+			<ro:RoofSlopeSide>
+				<ro:lowerBorder>0.7</ro:lowerBorder>
+				<ro:upperBorder>1.0</ro:upperBorder>
+			</ro:RoofSlopeSide>
+			<ro:RoofScaling>1.5</ro:RoofScaling>
+			<ro:EqualWeightForRoofSides>0.5</ro:EqualWeightForRoofSides>
+		</ro:RoofDescriptor>
+
+	</ro:roof>
+	<bu:floors>
+		<fl:floor>
+			<fl:floorposition>GROUND</fl:floorposition>
+			<fp:footprint src="Objectplacement">
+				<ct:extern>http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/XML/FootprintPlacement.xml</ct:extern>
+			</fp:footprint>
+
+			<fl:floorHeight>
+				<ct:lowerBorder>70.0</ct:lowerBorder>
+				<ct:upperBorder>100.0</ct:upperBorder>
+			</fl:floorHeight>
+		</fl:floor>
+		<fl:floor>
+			<fl:floorposition>INTERMEDIATE</fl:floorposition>
+			<fp:footprint src="Class">
+				<fp:classBased>
+					<fp:className>RectFootprint</fp:className>
+				</fp:classBased>
+			</fp:footprint>
+
+			<fl:floorHeight>
+				<ct:lowerBorder>70.0</ct:lowerBorder>
+			</fl:floorHeight>
+		</fl:floor>
+		<fl:floor>
+			<fl:floorposition>TOP</fl:floorposition>
+			<fp:footprint src="ExampleBased">
+				<ct:extern>file://J:\Promotion\Java\ContinuousModelSynthesis\ressource\Config\ExampleBasedFootprint.xml</ct:extern>
+			</fp:footprint>
+			<fl:floorHeight>
+				<ct:lowerBorder>120</ct:lowerBorder>
+			</fl:floorHeight>
+		</fl:floor>
+	</bu:floors>
+	<bu:buildingComponents>
+        <co:component>
+            <co:type>window</co:type>
+            <co:modelFilePrefix>Window_Jugendstil</co:modelFilePrefix>
+            <co:comp>
+                <co:window>
+                    <co:TranslationRatioForWindows>0.4</co:TranslationRatioForWindows>
+                    <co:MinDistanceBetweenWindowsRatio>0.01</co:MinDistanceBetweenWindowsRatio>
+                    <co:WindowToTargetQuadRatio>
+                        <ct:lowerBorder>0.3</ct:lowerBorder>
+                        <ct:upperBorder>0.5</ct:upperBorder>
+                    </co:WindowToTargetQuadRatio>
+                </co:window>
+            </co:comp>
+        </co:component>
+        <co:component>
+            <co:type>door</co:type>
+            <co:modelFilePrefix>Door</co:modelFilePrefix>
+            <co:comp>
+                <co:door>
+                    <co:DistanceToCornerRatio>0.1</co:DistanceToCornerRatio>
+                    <co:DoorToTargetQuadRatio>
+                        <ct:lowerBorder>0.5</ct:lowerBorder>
+                    </co:DoorToTargetQuadRatio>
+                </co:door>
+            </co:comp>
+        </co:component>
+        <co:component>
+            <co:type>moulding</co:type>
+            <co:modelFilePrefix>Moulding_Gotisch</co:modelFilePrefix>
+            <co:comp>
+                <co:moulding>
+                    <co:VerticalAlignment>TOP</co:VerticalAlignment>
+                    <co:MouldingHeightRatio>0.3</co:MouldingHeightRatio>
+                    <co:TargetWall>
+                        <co:direction>ALL</co:direction>
+                    </co:TargetWall>
+                </co:moulding>
+            </co:comp>
+        </co:component>
+    </bu:buildingComponents>
+</building>

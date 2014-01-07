@@ -1,0 +1,171 @@
+package semantic.city.builder.math;
+
+import javax.vecmath.Vector3f;
+
+import org.apache.log4j.Logger;
+
+/**
+ * @autor Patrick Gunia
+ * 
+ *        Vektorklasse zur Kapselung der verwendeten Vektorbibliothek vor der
+ *        Anwendung. Dient der Verwaltung von dreidimensionalen Vektoren.
+ * 
+ */
+@SuppressWarnings("serial")
+public class MyVector3f extends Vector3f {
+
+	/** Logging-Instanz */
+	protected final static Logger LOGGER = Logger.getLogger("math.MyVector3f");
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param arg0
+	 * @param arg1
+	 * @param arg2
+	 */
+	public MyVector3f(final float arg0, final float arg1, final float arg2) {
+		super(arg0, arg1, arg2);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param arg0
+	 */
+	public MyVector3f(final float[] arg0) {
+		super(arg0);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param x
+	 * @param y
+	 * @param z
+	 */
+
+	public MyVector3f(final double x, final double y, final double z) {
+		super((float) x, (float) y, (float) z);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Leerer Default-Konstruktor
+	 */
+	public MyVector3f() {
+		super();
+	}
+
+	/**
+	 * Dient dazu, -0.0f in den Werten auszuschliessen
+	 */
+	public void normalizeRange() {
+		if (this.x == -0.0f)
+			this.x = 0.0f;
+		if (this.y == -0.0f)
+			this.y = 0.0f;
+		if (this.z == -0.0f)
+			this.z = 0.0f;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String toString() {
+		return x + "," + y + "," + z;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Erstellt eine Kopie des Vektors und gibt diese an den Aufrufer zurueck
+	 * 
+	 * @return Kopie des Vektors
+	 */
+	@Override
+	public MyVector3f clone() {
+		final MyVector3f clone = (MyVector3f) super.clone();
+		clone.x = this.x;
+		clone.y = this.y;
+		clone.z = this.z;
+		return clone;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet die Gleichheit zweier Vektoren innerhalb eines
+	 * Toleranzbereichs
+	 * 
+	 * @param other
+	 *            Vektor, fuer den ueberprueft werden soll, ob dieser Vektor mit
+	 *            dem aktuellen Vektor uebereinstimmt
+	 * @return True, falls der Abstand der durch die Vektoren beschriebenen
+	 *         Punkte innerhalb eines Toleranzbereiches liegt, False sonst
+	 */
+	public boolean equalsWithinTolerance(final MyVector3f other) {
+
+		final MyVector3f subtraction = new MyVector3f();
+		subtraction.sub(this, other);
+
+		return subtraction.length() < 0.15f;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode berechnet die Gleichheit zweier Vektoren innerhalb eines
+	 * Toleranzbereichs
+	 * 
+	 * @param other
+	 *            Vektor, fuer den ueberprueft werden soll, ob dieser Vektor mit
+	 *            dem aktuellen Vektor uebereinstimmt
+	 * @param maxAcceptableDifference
+	 *            Maximale Abweichung unterhalb derer die Punkte als identisch
+	 *            angesehen werden
+	 * @return True, falls der Abstand der durch die Vektoren beschriebenen
+	 *         Punkte innerhalb eines Toleranzbereiches liegt, False sonst
+	 * 
+	 */
+	public boolean equalsWithinTolerance(final MyVector3f other,
+			final float maxAcceptableDifference) {
+
+		final MyVector3f subtraction = new MyVector3f();
+		subtraction.sub(this, other);
+		LOGGER.trace("Point-Distance: " + subtraction.length());
+		return subtraction.length() < maxAcceptableDifference;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuehrt einen komponentenweisen Vergleich des Uebergabevektors mit
+	 * dem aktuellen Vektor durch. Nur wenn alle Komponenten exakt
+	 * uebereinstimmen (da es sich um floats handelt, muessen die Werte exakt
+	 * uebereinstimmen), wird True zurueckgegeben, False sonst
+	 * 
+	 * @param comparable
+	 *            Vektor, der mit dem aktuellen Vektor verglichen wird
+	 * @return True, wenn alle Komponenten exakt uebereinstimmen, False sonst
+	 */
+	public boolean equalsComponentByComponent(final MyVector3f comparable) {
+
+		return this.x == comparable.x && this.y == comparable.y
+				&& this.z == comparable.z;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet, ob eine der Komponenten des Vektors NaN ist, falls dies
+	 * der Fall ist, wird der Vektor als ungueltig betrachtet
+	 * 
+	 * @return True, falls eine der Komponenten NaN ist, False sonst
+	 */
+	public boolean isInvalid() {
+		return Float.isNaN(x) || Float.isNaN(y) || Float.isNaN(z);
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

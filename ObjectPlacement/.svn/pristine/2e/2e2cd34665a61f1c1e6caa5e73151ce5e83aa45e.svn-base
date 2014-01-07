@@ -1,0 +1,114 @@
+package semantic.building.modeler.objectplacement.model;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import semantic.building.modeler.math.MyPolygon;
+import semantic.building.modeler.math.MyVector3f;
+import semantic.building.modeler.math.Vertex3d;
+
+public class RectComponent extends AbstractComponent {
+
+	// ------------------------------------------------------------------------------------------
+
+	public RectComponent(List<Vertex3d> corners) {
+		super(corners);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "rect";
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor, der die vollstaendige Berechnung aller Umrisskoordinaten
+	 * uebernehmen kann.
+	 * 
+	 * @param center
+	 *            Mittelpunkt der Komponente
+	 * @param height
+	 *            Hoehe der Komponente
+	 * @param width
+	 *            Breite der Komponente
+	 * @param widthAxis
+	 *            Vektor, der die Richtung der Breitenachse beschreibt
+	 * @param heightAxis
+	 *            Vektor, der die Richtung der Hoehenachse beschreibt
+	 */
+
+	public RectComponent(final ComponentDescriptor descriptor) {
+		super(descriptor);
+
+		Float height = descriptor.getHeight();
+		Float width = descriptor.getWidth();
+
+		Float halfHeight = height / 2;
+		Float halfWidth = width / 2;
+
+		MyVector3f widthAxis = descriptor.getWidthAxis();
+		MyVector3f heightAxis = descriptor.getHeightAxis();
+
+		MyVector3f normalizedWidthAxis = widthAxis.clone();
+		MyVector3f normalizedHeightAxis = heightAxis.clone();
+
+		normalizedWidthAxis.normalize();
+		normalizedHeightAxis.normalize();
+
+		normalizedHeightAxis.scale(halfHeight);
+		normalizedWidthAxis.scale(halfWidth);
+
+		MyVector3f center = descriptor.getCenter().clone();
+
+		// berechne einen Punkt ausgehend vom Center in Richtung der
+		// Breitenachse (wenn man die 1. Kante hat, waere das der Punkt rechts
+		// vom Mittelpunkt)
+		MyVector3f centerRightSide = new MyVector3f();
+		centerRightSide.add(center, normalizedWidthAxis);
+
+		// Die Abfolge, in der die Punkte definiert werden, haengt mit der
+		// Ausrichtung der uebergebenen Achsen zusammen
+		// diese folgen immer einer festen Reihenfolge, festgelegt durch die
+		// Vertexabfolge => dadurch sind die Berechnungen
+		// immer identisch
+
+		MyVector3f corner2 = new MyVector3f();
+		corner2.add(centerRightSide, normalizedHeightAxis);
+
+		// in die andere Richtung
+		normalizedHeightAxis.scale(-1.0f);
+		MyVector3f corner1 = new MyVector3f();
+		corner1.add(centerRightSide, normalizedHeightAxis);
+
+		// nun die untere Kante entlang, um Punkt it Index 3 zu bestimmen
+		normalizedWidthAxis.normalize();
+		// Laenge
+		normalizedWidthAxis.scale(width);
+		// Richtung
+		normalizedWidthAxis.scale(-1.0f);
+
+		MyVector3f corner3 = new MyVector3f();
+		corner3.add(corner2, normalizedWidthAxis);
+
+		normalizedHeightAxis.normalize();
+		// Laenge
+		normalizedHeightAxis.scale(height);
+		// Richtung
+
+		MyVector3f corner0 = new MyVector3f();
+		corner0.add(corner3, normalizedHeightAxis);
+
+		List<Vertex3d> corners = new ArrayList<Vertex3d>(4);
+		corners.add(new Vertex3d(corner0));
+		corners.add(new Vertex3d(corner1));
+		corners.add(new Vertex3d(corner2));
+		corners.add(new Vertex3d(corner3));
+
+		mPolygon = new MyPolygon(corners);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

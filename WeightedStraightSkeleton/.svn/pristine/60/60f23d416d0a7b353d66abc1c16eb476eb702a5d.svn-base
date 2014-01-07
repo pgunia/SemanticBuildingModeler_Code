@@ -1,0 +1,1105 @@
+package semantic.city.builder.weightedstraightskeleton.algorithm;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Set;
+import java.util.Vector;
+
+import org.apache.log4j.Logger;
+
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.MyVectormath;
+import semantic.city.builder.math.Plane;
+import semantic.city.builder.math.Ray;
+import semantic.city.builder.math.Vertex3d;
+import semantic.city.builder.weightedstraightskeleton.exception.AccuracyException;
+import semantic.city.builder.weightedstraightskeleton.exception.SquareCaseException;
+import semantic.city.builder.weightedstraightskeleton.math.MySkeletonVectormath;
+import semantic.city.builder.weightedstraightskeleton.result.AbstractResultElement;
+import semantic.city.builder.weightedstraightskeleton.result.ResultEdge;
+import semantic.city.builder.weightedstraightskeleton.result.ResultFace;
+import semantic.city.builder.weightedstraightskeleton.result.ResultQuad;
+import semantic.city.builder.weightedstraightskeleton.result.ResultTriangle;
+import semantic.city.builder.weightedstraightskeleton.result.ResultVertex;
+import semantic.city.builder.weightedstraightskeleton.result.SkeletonResultComplex;
+
+/**
+ * @author Patrick Gunia Implementation des Straight-Skeleton-Algorithmus das
+ *         Eingabepolygon besteht aus einer ArrayList, die alle Vertices im
+ *         Uhrzeigersinn definiert enthaelt
+ */
+public class StraightSkeleton {
+
+	/** Logger */
+	protected static Logger logger = Logger.getLogger("weightedstraightskeleton.skeleton.algorithm.straightskeleton");
+
+	/** Eingabepolygon, fuer das der Algorithmus ausgefuehrt wetrden soll */
+	private SkeletonPolygon mInputPolygon = null;
+
+	/** Maximale Anzahl an Iterationen */
+	private final int mMaxNumberOfLevels = 100;
+
+	/** speichert die Events in der Reihenfolge, in der sie auftreten */
+	private List<iStraightSkeletonEvent> mEventBuffer = null;
+
+	/** speichert saemtliche Jobs, die noch gerechnet werden muessen */
+	private List<SkeletonJob> mJobQueue = null;
+
+	/** speichert saemtliche Jobs, die waehrend der Berechnung erzeugt wurden */
+	private List<SkeletonJob> mJobBuffer = null;
+
+	/**
+	 * Vektor nimmt nach der Berechnung saemtliche waehrend der Iteration
+	 * bestimmten Polygone der unterschiedlichen Iterationsebenen auf
+	 */
+	private List<List<SkeletonPolygon>> mAllPolygons = null;
+
+	/** speichert alle im Verlauf der Berechnung bestimmten Schnittpunkte */
+	private Set<MyVector3f> mSchnittpunktBuffer = null;
+
+	/**
+	 * speichert Nachrichten, die waehrend der Verarbeitung an das Objekt
+	 * geschickt werden
+	 */
+	private List<String> mMessageBuffer = null;
+
+	/**
+	 * Instanz der Mathebibliothek fuer saemtliche mathematischen Berechnungen
+	 * waehrend des Algorithmus
+	 */
+	private MyVectormath mMathHelper = null;
+
+	/**
+	 * Enthaelt das Ergebnis als deutlich vereinfachte Struktur bestehend aus
+	 * Quads und Dreiecken
+	 */
+	private SkeletonResultComplex mResultComplex = null;
+
+	/** Vector mit allen Strahlen, die virtuelle Kanten beschreiben */
+	private List<Ray> mVirtualEdges = null;
+
+	/**
+	 * Instanz der VirtualEdgeManager-Klasse, die alle waehrend der Berechnung
+	 * erstellten Virtual-Edges aufnimmt
+	 */
+	private VirtualEdgeManager mVirtualEdgeManager = null;
+
+	/**
+	 * Speichert die maximale Abweichung von Punkten bzgl. eines Referenzstrahls und bietet
+	 * dadurch eine Abschaetzung der Ergebnisgenauigkeit
+	 */
+	private float maxAccuracyDeviation = Float.MIN_VALUE;
+	
+	/** Speichert Beziehungen zwischen Kantenausrichtungen und -gewichtungen */
+	private EdgeWeightService mEdgeWeightService = null;
+	
+	/** Konfigurationsobjekt mit Kantengewichten etc. */
+	private SkeletonRoofDescriptor mConf = null;
+	
+	/** Flag zeigt an, ob ein Slope-Event verarbeitet wurde */
+	private Boolean mProcessedSlopeEvent = false;
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Nethode setzt die Singleton-Instanz zurueck, dies ist erforderlich, wenn der Algorithmus fuer mehrere unterschiedliche Objekte
+	 * aufgerufen wird. Durch die Singelton-Struktur arbeiten sonst alle Instanzen auf dem gleichen Straight-Skeleton-Objekt. Durch den
+	 * Reset wird bei spaeteren Calls eine neue Instanz erzeugt und waehrend der Berechnung verwendet
+	 */
+	public void resetInstance() {
+		logger.warn("Zuruecksetzen der SS-Instanz");
+		mEventBuffer.clear();
+		mJobQueue.clear();
+		mAllPolygons.clear();
+		mSchnittpunktBuffer.clear();
+		mMessageBuffer.clear();
+		mVirtualEdges.clear();
+		mVirtualEdgeManager = null;
+		mConf = null;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param conf Konfigurationsobjekt fuer die Dachberechnung
+	 */
+	public StraightSkeleton(final SkeletonRoofDescriptor conf) {
+		logger.info("Neue SS-Instanz erzeugt");
+		mConf = conf;
+		mEventBuffer = new ArrayList<iStraightSkeletonEvent>();
+		mJobQueue = new ArrayList<SkeletonJob>();
+		mJobBuffer = new ArrayList<SkeletonJob>();
+		mSchnittpunktBuffer = new HashSet<MyVector3f>();
+		mMessageBuffer = new ArrayList<String>();
+		mMathHelper = MySkeletonVectormath.getInstance();
+		mVirtualEdges = new ArrayList<Ray>();
+		mAllPolygons = new ArrayList<List<SkeletonPolygon>>();
+		mVirtualEdgeManager = new VirtualEdgeManager(
+				(MySkeletonVectormath) mMathHelper);
+		mEdgeWeightService = new EdgeWeightService();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Hauptroutine der Algorithmenverarbeitung 1. Fuehre Berechnungen durch,
+	 * die fuer die spaetere Event-Ermittlung benoetigt werden 2. Bestimme
+	 * saemtliche moeglichen Events 3. Fuehre den Schrumpfprozess durch 4. Teste
+	 * das Abbruchkriterium (Flaecheninhalt = 0) 5. Falls kein Abbruch erfolgt,
+	 * fuehre die naechste Iteration durch
+	 * 
+	 * @param inputPolygon Eingabepolygon
+	 * @param edgeWeights Kantengewichte fuer das Eingabepolygon
+	 * @throws Exception  Sofern eine Exception auftritt, wird diese an den Aufrufer durchgereicht
+	 */
+	public void process() throws Exception {
+
+		SkeletonVertex vert = null;
+		SkeletonJob currentJob = null;
+
+		String output;
+		final String lineBreak = System.getProperty("line.separator");
+		
+		output = "-----------------------------------------------------------------------" + lineBreak;
+		output += "Berechne topologisches Skelett fuer Eingabepolygon" + lineBreak;
+		logger.info(output);
+		
+		// durchlaufe alle uebergebenen Vertices und lege eine
+		// Skeleton-Vertex-struktur an
+		List<SkeletonVertex> vertices = new ArrayList<SkeletonVertex>();
+		for(Vertex3d tempVert : mConf.getVertices()) {
+			// erzeuge ein neues Vertex und speichere die Position
+			vert = new SkeletonVertex();
+			vert.setPosition(tempVert.getPosition());
+			vertices.add(vert);
+		}
+
+		// erzeuge ein Polygon und uebergebe dieses an die Verarbeitung
+		mInputPolygon = new SkeletonPolygon(vertices);
+		SkeletonJob job = new SkeletonJob(mInputPolygon, 0, false, this, mInputPolygon.getPlane().getNormal());
+		job.setEdgeWeights(mConf.getEdgeWeights());
+		addJobToQueue(job);
+
+		// starte die Verarbeitungsloop => hier kann man bei Split-Events
+		// parallel rechnen
+		while (mJobQueue.size() > 0) {
+			
+			// hole den ersten Job in der Warteschlange
+			currentJob = mJobQueue.remove(0);
+
+			// und fuehre ihn aus
+			try {
+				currentJob.run();
+			}
+			catch(Exception e) {
+				computeAccuracy();
+				logger.error("Abweichung: " + maxAccuracyDeviation);
+				if(maxAccuracyDeviation > 0.1f) throw new AccuracyException("Die Genauigkeitsabweichung betraegt " + maxAccuracyDeviation + ". Dies ist mit hoher Wahrscheinlichkeit ursaechlich fuer das Scheitern der Berechnung.");
+				throw e;
+			}
+			catch(AssertionError e) {
+				// handelt es sich um eine Square-Case-Exception? => muss wegen Runnable ueber den Umweg der Assertion ausgegeben werden
+				if(e.getMessage().equals("SquareCaseException")) throw new SquareCaseException();
+				else {
+					computeAccuracy();
+					logger.error("Abweichung: " + maxAccuracyDeviation);
+					if(maxAccuracyDeviation > 0.2f) throw new AccuracyException("Die Genauigkeitsabweichung betraegt " + maxAccuracyDeviation + ". Dies ist mit hoher Wahrscheinlichkeit ursaechlich fuer das Scheitern der Berechnung");
+				}
+				throw e;
+			}
+			
+			logger.info("#Jobs in Queue: " + mJobQueue.size());
+			
+			// fuege den verarbeiteten Job zum Job-Buffer hinzu
+			mJobBuffer.add(currentJob);
+
+		}
+		
+		computeAccuracy();
+		
+		// extrahiere alle waehrend der Iterationen berechneten Polygone
+		extractAllPolygons();
+		
+		// extrahiere alle virtuellen Kanten aus den berechneten Jobs
+		extractVirtualEdgesFromJobs();
+		
+		// printMessageBuffer();
+		
+		// berechne Result-Faces
+		computeFinalResultSructures();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return
+	 */
+	public List<iStraightSkeletonEvent> getEvents() {
+		return mEventBuffer;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @param events
+	 */
+	public void addToEventBuffer(List<iStraightSkeletonEvent> events) {
+		mEventBuffer.addAll(events);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @param intersections
+	 */
+	public void addToSchnittpunktBuffer(Set<MyVector3f> intersections) {
+		mSchnittpunktBuffer.addAll(intersections);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Adds the single schnittpunkt.
+	 * 
+	 * @param intersection
+	 *            the intersection
+	 */
+	public void addSingleSchnittpunkt(MyVector3f intersection) {
+		mSchnittpunktBuffer.add(intersection);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return
+	 */
+	public List<MyVector3f> getSchnittpunktBuffer() {
+		Vector<MyVector3f> result = new Vector<MyVector3f>();
+		result.addAll(mSchnittpunktBuffer);
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @param job
+	 */
+	public void addJobToQueue(SkeletonJob job) {
+		logger.info("Job mit Level: " + job.getLevel()
+				+ " wurde zur JobQueue hinzugefuegt");
+		mJobQueue.add(job);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @return
+	 */
+	public int getMaxNumberOfLevels() {
+		return mMaxNumberOfLevels;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @return
+	 */
+	public List<List<SkeletonPolygon>> getAllPolygons() {
+		return mAllPolygons;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public SkeletonResultComplex getResultComplex() {
+		return mResultComplex;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert alle im Edge-Manager gespeicherten virtuellen Kanten als
+	 * Ray-Datenstrukturen zurueck
+	 * 
+	 * @return Vector mit Rays aller gespeicherten virtuellen Kanten
+	 * 
+	 */
+	public List<Ray> getVirtualEdges() {
+		return mVirtualEdgeManager.getVirtualEdgesAsRays();
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft alle waehrend der Verarbeitung erzeugten Jobs und
+	 * fuegt ihre virtuellen Kanten zum globalen Edge-Manager hinzu.
+	 */
+	private void extractVirtualEdgesFromJobs() {
+
+		logger.trace("EXTRACT VIRTUAL EDGES FROM JOBS...");
+		
+		Iterator<SkeletonJob> jobIter = mJobBuffer.iterator();
+		while (jobIter.hasNext()) {
+			mVirtualEdgeManager.addVirtualEdges(jobIter.next()
+					.getVirtualEdges());
+		}
+		
+		logger.trace("EXTRACT VIRTUAL EDGES FROM JOBS...done");
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Fuegt dem Meesage-Buffer eine Nachricht hinzu. Diese werden am Ende der
+	 * Verarbeitung ausgegeben
+	 * 
+	 * @param message
+	 *            Nachricht, die zum Buffer hinzugefuegt wird
+	 */
+	public void addToMessageBuffer(String message) {
+		mMessageBuffer.add(message);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft alle Jobs im Job-Buffer, extrahiert fuer jedes Level
+	 * ein oder mehrere Polygone und fuegt sie zum mAllPolygons-Buffer hinzu
+	 */
+	private void extractAllPolygons() {
+
+		logger.trace("EXTRACT ALL POLYGONS...");
+		SkeletonJob currentJob = null;
+		Iterator<SkeletonJob> jobIter = mJobBuffer.iterator();
+		int currentLevel = -1;
+		List<SkeletonPolygon> levelPolygonBuffer = null;
+
+		while (jobIter.hasNext()) {
+			currentJob = jobIter.next();
+			currentLevel = currentJob.getLevel();
+			// wenn ein Level erreicht wurde, fuer das noch kein Buffer angelegt
+			// ist, erzeuge einen neuen
+			if (currentLevel > mAllPolygons.size() - 1) {
+				levelPolygonBuffer = new Vector<SkeletonPolygon>();
+
+				levelPolygonBuffer.add(currentJob.getPolygon());
+				mAllPolygons.add(levelPolygonBuffer);
+			}
+			// sonst hole den bereits erstellten Buffer und fuege diesem ein
+			// weiteres Polygon hinzu
+			else {
+				levelPolygonBuffer = mAllPolygons.get(currentLevel);
+				levelPolygonBuffer.add(currentJob.getPolygon());
+			}
+		}
+		
+		logger.trace("EXTRACT ALL POLYGONS...done");
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Gibt alle aktuell im Message-Buffer enthaltenen Nachrichten aus
+	 */
+	private void printMessageBuffer() {
+		String output = "";
+		String lineBreak = System.getProperty("line.separator");
+		for (int i = 0; i < mMessageBuffer.size(); i++) {
+			output += i + 1 + ": " + mMessageBuffer.get(i) + lineBreak;
+		}
+		logger.info(output);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Getter-Methode fuer den Message-Buffer
+	 * 
+	 * @return Vector mit saemtlichen waehrend der Verarbeitung aufgetretenen
+	 *         Meldungen
+	 */
+	public List<String> getMessageBuffer() {
+		return mMessageBuffer;
+	}
+
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet ausgehend vom vollstaendigen Ergebnisgraph eine Menge
+	 * von Faces, die in einer Ergebnisstruktur vom Typ SkeletonResultComplex
+	 * gespeichert werden. Die Methode durchlaeuft saemtliche Eingabekanten des
+	 * Ausgangspolygons und generiert ResultElemente.
+	 */
+	private void computeFinalResultSructures() {
+
+		logger.debug("COMPUTE FINAL RESULT STRUCTURES...");
+		
+		// hole die Eingabevertices, diese speichern saemltiche Kinder etc.
+		List<SkeletonVertex> vertices = mInputPolygon.getVertices();
+		Iterator<SkeletonVertex> vertIter = vertices.iterator();
+		SkeletonVertex currentVertex = null, currentNeighbour = null;
+		SkeletonEdge currentEdge = null;
+		ResultFace face = null;
+		String message;
+		
+		// erzeuge das Basisobjekt fuer die Result-Speicherung
+		mResultComplex = new SkeletonResultComplex();
+
+		
+		logger.debug("#VERTICES RESULT: " + vertices.size());
+		// durchlaufe alle Vertices und erzeuge fuer jede Kante ein ResultFace
+		while (vertIter.hasNext()) {
+
+			// erzeuge zunaechst eine Basis-Kante und starte anschliessend die
+			// rekursive Elemnt-Erstellung
+			currentVertex = vertIter.next();
+			currentEdge = currentVertex.getNeighbourEdgeByIndex(0);
+			currentNeighbour = currentVertex.getNeighbourByIndex(0);
+
+			face = new ResultFace();
+			final ResultEdge baseEdge = generateBaseEdgeForEdge(currentEdge);
+			face.setBaseEdge(baseEdge);
+			message = "Bearbeite Basekante mit Start: "
+				+ currentVertex.getPosition() + " End: "
+				+ currentNeighbour.getPosition();
+			logger.debug(message);
+			
+			assert currentEdge.getPlane() != null: "FEHLER: Slope-Plane ist null";
+			
+			generateResultElementsForEdge(currentVertex,
+					currentNeighbour, baseEdge, face, currentEdge.getPlane());
+
+			mResultComplex.addFaceToResult(face);
+		}
+		
+		logger.debug("COMPUTE FINAL RESULT STRUCTURES...done");
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Rekursive Methode zur Erzeugung von Result-Strukturen basierend auf
+	 * Eingabekanten. Ausgehend von den Eingabevertices wird versucht, eine
+	 * Result-Struct-Struktur zu erzeugen (entweder Dreieck oder Quad). Sollten
+	 * die Eingabevertices nicht ueber Kinder verfuegen, versucht die Methode,
+	 * ueber VirtualEdges und Twin-Analysen, gueltige Kinder zu finden. Sofern
+	 * die Sucher erfolgreich war, wird ein ResultStruct-Element erzeugt und
+	 * die Methode ruft sich rekursiv selber erneut auf.
+	 * 
+	 * @param start
+	 *            Startvertex der (hypothetischen) Kante, fuer die ein Element
+	 *            berechnet werden soll
+	 * @param end
+	 *            Endvertex der (hypothetischen) Kante, fuer die ein Element
+	 *            berechnet werden soll
+	 * @param lowerNeighbour
+	 *            AbstractResultElement der vorherigen Rekursionsstufe. Wird als
+	 *            lowerNeighbour des neu erzeugten Elements verwendet
+	 * 
+	 */
+	
+	private void generateResultElementsForEdge(SkeletonVertex start,
+			SkeletonVertex end, AbstractResultElement lowerNeighbour,
+			ResultFace face, Plane slopePlane) {
+
+		assert slopePlane != null: "FEHLER: Uebergebene Slope-Plane ist NULL";
+		
+		// beende die Rekursion, wenn start und end uebereinstimmen
+		if (start.getPositionPtr().equals(end.getPositionPtr())) {
+			logger.debug("Start (" + start.getPositionPtr() + ") und End (" + end.getPositionPtr() + ") stimmen ueberein! Abbruch.");
+			return;
+		}
+
+		// speichere die Eingabevertices zwischen
+		SkeletonVertex startBuffer = start;
+		SkeletonVertex endBuffer = end;
+
+		String message;
+		message = "Aufruf mit start: " + start;
+		message += " end: " + end;
+		logger.debug(message);
+		
+		AbstractResultElement result = null;
+
+		assert start != null && end != null : "Die Eckpunkte der Kante sind nicht definiert";
+
+		// pruefe, ob die beiden Vertices direkte Nachbarn sind
+		SkeletonEdge edge = start.getNeighbourEdgeByIndex(0);
+		logger.debug("Start: " + start.printNeighbours());
+		
+		boolean multipleElementsForLine = isMultiSegmentEdge(edge, end);
+
+		// Standardfall: 1 Elemente pro Edge
+		if (!multipleElementsForLine) {
+			// wenn eines der beiden Vertices keine Kinder besitzt, versuche,
+			// ein Ersatzvertex zu bestimmen
+			if (!start.hasChild()) {
+				start = findNeighbourForVertexWithoutChild(start, end, true);
+
+				if (start == null) {
+					// wenn kein start-Vertex gefunden werden konnte, teste als
+					// letzten Versuch, ob das Eingabevertex einen Zwilling
+					// besitzt
+					if (startBuffer.hasTwinVertex()) {
+						start = startBuffer.getTwinVertex();
+						if (!start.hasChild())
+							start = null;
+					}
+					
+					if (start == null) {
+						logger.debug("Abbruch: Es konnte kein Start-Vertex mit Kind bestimmt werden fuer Start: " + startBuffer + " End: " + endBuffer);
+						return;
+					}
+				}
+			}
+
+			if (!end.hasChild()) {
+				// starte mit dem Start-Vertex => sofern vorher ein neues Startvertex gefunden wurde,
+				// verschiebt man die Suche entlang der virtuellen Kante, bis man ein gueltiges Vertex findet
+				// oder abbricht
+				end = findNeighbourForVertexWithoutChild(start, end, false);
+				if (end == null) {
+					if (endBuffer.hasTwinVertex()) {
+						end = endBuffer.getTwinVertex();
+						if (!end.hasChild())
+							end = null;
+					}
+					if (end == null) {
+
+						logger.debug("Abbruch: Es konnte kein End-Vertex mit Kind bestimmt werden fuer Start: " + startBuffer + " End: " + endBuffer);
+						return;
+					}
+				}
+			}
+
+			if (!start.hasChild() && !end.hasChild()) {
+				// System.out.println("Abbruch: Start- und End-Vertex besitzen keine Kinder. Erzeugung von Result-Strukturen wird abgebrochen.");
+				return;
+			}
+
+			if (!validateChildren(start.getChild(), end.getChild())) {
+				
+				// hier kann es wiederum zu Problemen kommen, wenn man es mit
+				// Twin-Vertices zu tun hat
+				// teste zunaechst nur auf das Endvertex
+				
+				if (end.hasTwinVertex())
+					end = end.getTwinVertex();
+				
+				if (!end.hasChild()
+						|| !validateChildren(start.getChild(), end.getChild())) {
+					logger.debug("Abbruch: Die berechneten Kinder sind ungueltig fuer Start: " + startBuffer + " End: " + endBuffer);
+					return;
+				}
+			}
+
+			result = createAbstractElement(start, end, slopePlane);
+			result.setLowerNeighbour(lowerNeighbour);
+
+			if (!lowerNeighbour.hasUpperNeighbour())
+				lowerNeighbour.setUpperNeighbour(result);
+
+			// fuege das neue Element zum Ergebnisobjekt hinzu
+			face.addElementToFace(result);
+
+			// starte Rekursion
+			start = start.getChild();
+			end = end.getChild();
+			
+			Plane nextSlopePlane = null;
+		
+			if(start.getNeighbourEdgeByIndex(0) != null) nextSlopePlane = start.getNeighbourEdgeByIndex(0).getPlane();
+			if(nextSlopePlane == null) {
+				logger.debug("Reusing Slope-Plane!");
+				nextSlopePlane = slopePlane;
+			}
+			
+			generateResultElementsForEdge(start, end, result, face, nextSlopePlane);
+
+		}
+
+		else {
+			logger.debug("MultiEdge Fall");
+			generateResultElementsForSplittedEdge(start, end, lowerNeighbour,
+					face, slopePlane);
+			
+		}
+			
+
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode validiert berechnete Kinder des Result-Struktur-Algorithmus.
+	 * Kinder sind genau dann gueltig, wenn sie entweder direkte Nachbarn sind,
+	 * oder sich auf einer virtuellen Kante befinden, oder wenn sie gleich sind
+	 * 
+	 * @param start
+	 *            Start-Kind
+	 * @param end
+	 *            End-Kind
+	 * @return True, wenn die Kinder gleich sind, sie direkte Nachbarn sind,
+	 *         oder sie sich auf der selben virtuellen Kante befinden, false
+	 *         sonst
+	 * 
+	 */
+	private boolean validateChildren(SkeletonVertex start, SkeletonVertex end) {
+
+		// gleiche Position, fuehrt zur Erzeugung eines Dreiecks
+		if (start.getPositionPtr().equals(end.getPositionPtr()))
+			return true;
+
+		// teste auf direkte Nachbarschaft
+		if (start.getIndexForNeighbour(end) != -1)
+			return true;
+
+		if (end.getIndexForNeighbour(start) != -1)
+			return true;
+		
+		// teste auf Zwillingsvertices
+		if (end.hasTwinVertex()) {
+			if (start.getIndexForNeighbour(end.getTwinVertex()) != -1)
+				return true;
+		}
+
+		if (start.hasTwinVertex()) {
+			if (end.getIndexForNeighbour(start.getTwinVertex()) != -1)
+				return true;
+		}
+
+		// teste auf Virtual-Edge
+		if (mVirtualEdgeManager.getEdgeForVertices(start, end) != null) {
+			return true;
+		}
+
+		// es besteht keine Beziehung zwischen den Vertices, darum soll auch
+		// keine Result-Struktur erstellt werden
+		return false;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode versucht, fuer das uebergebene Vertex einen Nachbarn mit Kind zu
+	 * finden, der auf der gleichen Kante liegt wie der gueltige Nachbar. Hierzu
+	 * greift die Methode auf die Virtual-Edges zurueck, um ein Vertex zu
+	 * finden, das auf der gleichen Kante wie die beiden Uebergabevertices
+	 * liegt, aber sich vom Ausgangsvertex in Richtung des gueltigen Nachbarn
+	 * befindet
+	 * 
+	 * @param vertex
+	 *            SkeletonVertex, das kein Kind besitzt und fuer das innerhalb
+	 *            der Methode ein Ersatz bestimmt werden soll
+	 * @param validNeighbour
+	 *            Gueltiger Nachbar auf der gleichen Kante wie das Eingabevertex
+	 * @param isStart Gibt an, ob es sich beim ersten uebergebenen Vertex um das Startvertex der virtuellen Kante handelt
+	 * @return SkeletonVertex, das zwischen dem Eingabevertex und dem gueltigen
+	 *         Nachbarn liegt und ein Kind besitzt, null sonst
+	 */
+	private SkeletonVertex findNeighbourForVertexWithoutChild(
+			SkeletonVertex vertex, SkeletonVertex validNeighbour, boolean isStart) {
+
+		// verwende den Virtual-Edge-Manager, um ein Vertex in Richtung des
+		// gueltigen Nachbarn zu finden
+		SkeletonVertex newNeighbour = mVirtualEdgeManager
+				.getNeighbourForVertexForResult(vertex, validNeighbour, isStart);
+
+		return newNeighbour;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode behandelt den Sonderfall bei der Berechnung des Results, bei dem
+	 * die uebergebenen Vertices nicht durch eine direkte Kante verbunden sind.
+	 * Dies tritt bei Split- und Vertex-Events auf. Die Bestimmung der
+	 * ResultElemente geschieht innerhalb dieser Funktion auf der Basis
+	 * einzelner Liniensegmente, indem ueber alle Segmente iteriert wird. Bei
+	 * jeder Iteration ruft man fuer das Liniensegment wiederum die Hauptmethode
+	 * "generateResultElementsForEdge" auf.
+	 * 
+	 * @param start
+	 *            Startvertex des zu verarbeitenden Linienzugs
+	 * @param end
+	 *            Endvertex des zu verarbeitenden Linienzugs
+	 * @param lowerNeighbour
+	 *            ResultElement auf der vorhergehenden Rekursionsebene
+	 * @param face
+	 *            ResultFace-Instanz fuer die aktuell bearbeitete Kante des
+	 *            Eingabepolygons.
+	 */
+	private void generateResultElementsForSplittedEdge(SkeletonVertex start,
+			SkeletonVertex end, AbstractResultElement lowerNeighbour,
+			ResultFace face, Plane slopePlane) {
+
+		String message = "Splitted-Edge-Sonderfall mit start: " + start + " end: " + end;
+		logger.debug(message);
+		
+		// System.out.println("Result-Elemente fuer Multi-Segment-Line werden berechnet...");
+		SkeletonVertex endBuffer = end, currentEnd = null, startChild = null, endChild = null;
+		SkeletonEdge nextEdge = null;
+		
+		// verarbeite das erste Liniensegment
+		SkeletonEdge edge = start.getNeighbourEdgeByIndex(0);
+		currentEnd = edge.getEndVertex();
+		
+		AbstractResultElement rightNeighbour = null, result = null;
+		Ray currentRay = null;
+		
+		// Buffer nimmt bereits verarbeitete "Endstuecke" auf, darueber kann man Endlosschleifen abfangen
+		List<SkeletonVertex> testedEnds = new ArrayList<SkeletonVertex>();
+		
+		
+		// VERMUTLICH LIEGT IN DIESER SCHLEIFE DIE URSACHE FUER DIE ENDLOSE SCHLEIFE
+		while (true) {
+
+			if (start.hasChild() && currentEnd.hasChild()) {
+				
+				logger.debug("Schleifendurchlauf: Start: " + start + " End: " + currentEnd);
+				
+				result = createAbstractElement(start, currentEnd, slopePlane);
+				result.setLowerNeighbour(lowerNeighbour);
+
+				// erzeuge einen Strahl, ueber diesen wird das Abbruchkriterium getestet
+				currentRay = new Ray(start, currentEnd);
+				
+				if (!lowerNeighbour.hasUpperNeighbour())
+					lowerNeighbour.setUpperNeighbour(result);
+
+				face.addElementToFace(result);
+
+				// aktualisiere die Nachbarschaften innerhalb der aktuellen
+				// Ebene
+				if (rightNeighbour == null) {
+					rightNeighbour = result;
+				} else {
+					result.setRightNeighbour(rightNeighbour);
+					rightNeighbour.setLeftNeighbour(result);
+					rightNeighbour = result;
+				}
+
+				// starte die Rekursion
+				startChild = start.getChild();
+				endChild = currentEnd.getChild();
+
+				assert startChild != null && endChild != null : "Vertices ohne Kinder gefunden";
+
+				Plane nextSlopePlane = null;
+				nextEdge = startChild.getNeighbourEdgeByIndex(0);
+				if(nextEdge != null) nextSlopePlane = nextEdge.getPlane();
+				
+				// FALL-BACK => wenn keine SlopePlane existiert, verwende die alte nochmal
+				if(nextSlopePlane == null) {
+					logger.debug("Reusing Slope-Plane!");
+					nextSlopePlane = slopePlane;
+				}
+				
+				generateResultElementsForEdge(startChild, endChild,
+						result, face, nextSlopePlane);
+
+			}
+			
+			// Ende zum Buffer adden
+			testedEnds.add(currentEnd);
+			
+			// bereite naechste Iteration vor
+			start = currentEnd;
+
+			// beruecksichtige Sonderfall fuer Split-Vertices
+			if (start.hasTwinVertex() && !start.isTwinVertex()) {
+				start = start.getTwinVertex();
+			}
+			
+			// teste Abbruchbedingung: Iteration stoppt, sobald das Startvertex
+			// die Postion des urspruenglichen Endvertex erreicht hat
+			if (start.getPosition().equals(endBuffer.getPosition()))
+				break;
+			
+			/*
+			// 2. Abbruchtkriterium => das aktuelle Endvertex liegt hinter dem absoluten Endvertex (es existieren Konfigurationen, bei denen durch Split- oder Vertexevents korrekte Strukturen entstehen
+			// bei denen allerdings ermittelte Nachbarn hinter den eigentlichen Eingabevertices liegen => testet man dies nicht, so koennen Endlosschleifen entstehen
+			double rayParameter = mMathHelper.calculateParameterOnRayForPoint(end.getPosition(), currentRay); 
+			logger.error("PARAMETER: " + rayParameter);
+			
+			// wenn der Endpunkt hinter dem Strahlende liegt, breche ab
+			if(rayParameter > 1.0d) {
+				logger.error("Punkt: " + currentEnd.getPositionPtr() + " liegt hinter dem Strahlende fuer Strahl: " + currentRay + " Parameter: " + rayParameter);
+				break;
+			}
+			*/
+			assert start != null: "FEHLER: Start-Vertex ist null";
+			nextEdge = start.getNeighbourEdgeByIndex(0);
+			
+			// wenn das neue Start-Vertex keine Nachbarkante besitzt, existiert ein "Loch" zwischen den Vertices
+			// breche in diesem Fall ab
+			if(nextEdge == null) break;
+			
+			// sonst laufe weiter auf der kante
+			currentEnd = nextEdge.getEndVertex();
+		
+			if(testedEnds.contains(currentEnd)) {
+				logger.error("Das Vertex " + currentEnd + " wurde bereits verarbeitet! Abbruch der Schleife.");
+				break;
+			}
+			
+		}
+		
+		logger.debug("End Splitted-Edge-Verarbeitung!");
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet waehrend der Result-Berechnung fuer eine
+	 * start-end-Eingabe, ob es sich um eine Kante mit mehreren Segmenten
+	 * handelt, die durch ein Split- oder Vertex-Event entstanden ist. Dies ist
+	 * nur dann der Fall, wenn das uebergebene Endvertex nicht mit dem Endvertex
+	 * der Kante uebereinstimmt und das uebergebene Endvertex Kinder hat (also
+	 * nicht im Rahmen eines Loeschevents entfernt wurde.
+	 * 
+	 * @param edge
+	 *            Kante, die auf mehrere Segmente untersucht wird
+	 * @param end
+	 *            Endvertex einer Eingabekante, fuer die Result-Elemente
+	 *            berechnet werden sollen
+	 * @return True: es handelt sich um eine Kante mit mehreren Segmenten, False
+	 *         sonst
+	 */
+	private boolean isMultiSegmentEdge(SkeletonEdge edge, SkeletonVertex end) {
+		
+		if (edge == null)
+			return false;
+		if (!end.hasChild())
+			return false;
+		if (edge.getEndVertex().getPosition().equals(end.getPosition()))
+			return false;
+		return true;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode generiert die untere Kante eines ResultFaces und gibt diese
+	 * zurueck.
+	 * 
+	 * @param edge
+	 *            Kante, die einer Kante des Eingabepolygons des gesamten
+	 *            Algorithmus entspricht
+	 * @return ResultEdge-Objekt, das die Eingabekante in der
+	 *         Result-Datenstruktur repraesentiert
+	 */
+	private ResultEdge generateBaseEdgeForEdge(final SkeletonEdge edge) {
+
+		final SkeletonVertex start = edge.getStartVertex();
+		final SkeletonVertex end = edge.getEndVertex();
+
+		Vertex3d startVert3d = new ResultVertex(start.getPosition());
+		Vertex3d endVert3d = new ResultVertex(end.getPosition());
+
+		startVert3d = mResultComplex.addVertex(startVert3d);
+		endVert3d = mResultComplex.addVertex(endVert3d);
+
+		final ResultEdge resultEdge = new ResultEdge();
+		resultEdge.addPoint(startVert3d);
+		resultEdge.addPoint(endVert3d);
+		resultEdge.setWeight(edge.getWeight());
+
+		return resultEdge;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erzeugt fuer die uebergebenen Vertices ein Result-Element, indem
+	 * die Kinder extrahiert und anschliessend dahingehend untersucht werden, ob
+	 * sie ein Quad oder ein triangle bilden
+	 * 
+	 * @param start
+	 *            Startvertex der Kante, fuer die ein Element erzeugt werden
+	 *            soll
+	 * @param end
+	 *            Endvertex der Kante, fuer die ein Element erzeugt werden soll
+	 * 
+	 * @return AbstractResultElement, das entweder ResultTriangle oder
+	 *         ResultQuad ist
+	 */
+	private AbstractResultElement createAbstractElement(SkeletonVertex start,
+			SkeletonVertex end, Plane slopePlane) {
+		
+		assert slopePlane != null: "FEHLER: Uebergebene SlopePlane ist null";
+		// assert mMathHelper.isPointOnPlane(start.getPosition(), slopePlane) && mMathHelper.isPointOnPlane(end.getPosition(), slopePlane): "FEHLER: Uebergabepunkte befinden sich nicht auf der Uebergabeebene!";
+		
+		AbstractResultElement result = null;
+		boolean projectPoints = false;
+
+		SkeletonVertex childStart = null, childEnd = null;
+		Vertex3d childStartVert3d = null, childEndVert3d = null;
+		assert start.hasChild() && end.hasChild() : "Die uebergebenen SkeletonVertices besitzen keine Kinder";
+
+		childStart = start.getChild();
+		childEnd = end.getChild();
+
+		String message = "Erzeuge Result-Element mit Start:  " + start;
+		message += " End: " + end;
+		message += " childStart: " + childStart;
+		message += " childEnd: " + childEnd;
+	 	logger.debug(message);
+		
+		Vertex3d startVert3d = new ResultVertex(start.getPosition());
+		Vertex3d endVert3d = new ResultVertex(end.getPosition());
+
+		if(projectPoints) {
+			mMathHelper.projectPointOntoPlane(slopePlane, startVert3d);
+			mMathHelper.projectPointOntoPlane(slopePlane, endVert3d);
+		}
+		startVert3d = mResultComplex.addVertex(startVert3d);
+		endVert3d = mResultComplex.addVertex(endVert3d);
+
+
+		// teste, ob die beiden Kinder gleich sind, in diesem Fall erzeugt man
+		// eine ResultTriangle-Struktur
+		if (childStart.equals(childEnd)) {
+			result = new ResultTriangle();
+
+			childEndVert3d = new ResultVertex(childStart.getPosition());
+			if(projectPoints) mMathHelper.projectPointOntoPlane(slopePlane, childEndVert3d);
+
+			// fuege die Punkte im Uhrzeigersinn ein
+			result.addPoint(startVert3d);
+			result.addPoint(endVert3d);
+			childEndVert3d = mResultComplex.addVertex(childEndVert3d);
+			result.addPoint(childEndVert3d);
+			logger.debug("Triangle-Resultstruktur wurde erzeugt");
+		}
+		// die Kinder sind unterschiedlich, erzeuge ein Quad
+		else {
+			
+			childStartVert3d = new ResultVertex(childStart.getPosition());
+			childEndVert3d = new ResultVertex(childEnd.getPosition());
+			
+			if(projectPoints) {
+				mMathHelper.projectPointOntoPlane(slopePlane, childStartVert3d);
+			 	mMathHelper.projectPointOntoPlane(slopePlane, childEndVert3d);
+			}
+				
+			childStartVert3d = mResultComplex.addVertex(childStartVert3d);
+			childEndVert3d = mResultComplex.addVertex(childEndVert3d);
+
+			result = new ResultQuad();
+			result.addPoint(startVert3d);
+			result.addPoint(endVert3d);
+			result.addPoint(childEndVert3d);
+			result.addPoint(childStartVert3d);
+			logger.debug("Quad-Resultstruktur wurde erzeugt");
+		}		
+		
+		
+		List<Vertex3d> quadPoints = result.getPoints();
+		Vertex3d currentPoint = null;
+		Iterator<Vertex3d> vertIter = quadPoints.iterator();
+		
+		while(vertIter.hasNext()) {
+			currentPoint = vertIter.next();
+			// System.out.println(currentPoint);
+			// assert mMathHelper.isPointOnPlane(currentPoint.getPosition(), slopePlane): "FEHLER: Punkt " + currentPoint.getPositionPtr() + " des Result-Quads liegt nicht auf der Ebene " + slopePlane + "!";
+		}
+		
+		return result;
+	}
+
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode dient der Berechnung der Genauigkeit der Vertex-Positionierung. Durch Floating-Point-Rundungen
+	 * koennen sich Fehler aufsummieren, speziell bei steigender Anzahl an Leveln verstaerkt sich dieser Fehler.
+	 * Die Methode durchlaeuft ausgehend von einem Startvertex alle Kinder und berechnet den Abstand der Kinder 
+	 * von einem Strahl durch die ersten beiden Vertices. Je groesser dieser Abstand, desto groesser die Ungenauigkeit
+	 */
+	private void computeAccuracy() {
+		
+		logger.trace("COMPUTE ACCURACY...");
+		
+		Iterator<SkeletonVertex> vertIter = mInputPolygon.getVertices().iterator();
+		SkeletonVertex current = null, child = null, innermostChild = null, maxDistanceVertex = null;
+		Ray currentRay = null;
+		float maxDistance = -Float.MAX_VALUE, currentDistance = -1.0f;
+		
+		while(vertIter.hasNext()) {
+			current = vertIter.next();
+			
+			// hole das erste Kind
+			if(current.hasChild()) {
+				child = current.getChild();
+				
+				// berechne einen Strahl zwischen Elternknoten und Kind
+				currentRay = new Ray(current, child);
+				
+				innermostChild = current.getInnerMostChild();
+				currentDistance = mMathHelper.calculatePointEdgeDistance(innermostChild.getPosition(), currentRay);
+				if(currentDistance > maxDistance) {
+					maxDistance = currentDistance;
+					maxDistanceVertex = current;
+				}
+			}
+			
+		}
+		logger.trace("COMPUTE ACCURACY...done");
+		maxAccuracyDeviation = maxDistance;
+		// System.out.println("Maximale Abweichung eines Punktes von einem Strahl betraegt " + maxDistance + " fuer Vertex: " + maxDistanceVertex);
+		// assert false: "Maximale Abweichung eines Punktes von einem Strahl betraegt " + maxDistance + " fuer Vertex: " + maxDistanceVertex;
+	}
+	// ------------------------------------------------------------------------------------------
+
+
+
+	/**
+	 * @return the maxAccuracyDeviation
+	 */
+	public float getMaxAccuracyDeviation() {
+		return maxAccuracyDeviation;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	protected void finalize() throws Throwable {
+	    logger.info("Zerstöre Straight-Skeleton-Algorithmus Controller...");
+	}
+	// ------------------------------------------------------------------------------------------
+
+	
+	/**
+	 * @return the mEdgeWeightService
+	 */
+	public EdgeWeightService getEdgeWeightService() {
+		return mEdgeWeightService;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert den naechsten Job in der Warteschlange
+	 * @return Naechster Job in der Queue
+	 */
+	public SkeletonJob getNextJob() {
+		if(mJobQueue.size() > 0) {
+			return mJobQueue.get(0);
+		} else {
+			return null;
+		}
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mConf
+	 */
+	public SkeletonRoofDescriptor getConf() {
+		return mConf;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mProcessedSlopeEvent
+	 */
+	public Boolean getProcessedSlopeEvent() {
+		return mProcessedSlopeEvent;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mProcessedSlopeEvent the mProcessedSlopeEvent to set
+	 */
+	public void setProcessedSlopeEvent(Boolean mProcessedSlopeEvent) {
+		this.mProcessedSlopeEvent = mProcessedSlopeEvent;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	
+}

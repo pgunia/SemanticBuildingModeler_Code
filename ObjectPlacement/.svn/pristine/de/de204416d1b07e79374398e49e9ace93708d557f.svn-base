@@ -1,0 +1,911 @@
+package semantic.city.builder.objectplacement.algorithm;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+
+import org.apache.log4j.Logger;
+
+import semantic.city.builder.math.MyPolygon;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.MyVectormath;
+import semantic.city.builder.math.Ray;
+import semantic.city.builder.math.Vertex3d;
+import semantic.city.builder.objectplacement.model.AbstractComponent;
+
+/**
+ * 
+ * @author Patrick Gunia Verwaltungsklasse zum Aufbau und zur Kontrolle eines
+ *         Quadtree
+ */
+
+public class Quadtree {
+
+	/** Logger */
+	protected static Logger logger = Logger
+			.getLogger("objectplacement.placementalgorithm.quadtree");
+
+	/** Wurzelknoten des Quadtrees */
+	private QuadtreeNode mRoot = null;
+
+	/**
+	 * Minimale Ausdehnung in Hoehe / Breite ab der nicht weiter unterteilt wird
+	 */
+	private final Integer mLowerLimit = 10;
+
+	/** Instanz der Mathebibliothek */
+	private MyVectormath mMathHelper = null;
+
+	/**
+	 * Set wird bei der Berechnung der Marker-Propagierung verwendet, um
+	 * mehrfaches Processing einzelner Baumknoten zu verhindern
+	 */
+	private Set<QuadtreeNode> processedNodes = null;
+
+	/**
+	 * Map speichert fuer jeden markierten Strahl alle Knoten, die von diesem
+	 * getroffen werden, um mehrfache Berechnungen zu verhinden
+	 */
+	private Map<Ray, List<QuadtreeNode>> mRayNodeMap = null;
+
+	/** Zufallsgenerator fuer Sample-Point-Jittering */
+	private Random mRandom = null;
+
+	private int counter = 0;
+
+	/** Statistiken bzgl. der Baumstruktur */
+	private int numberOfNodes = 0;
+
+	private int numberOfLevels = 0;
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Konstruktor mit Uebergabe des initialen, rechteckigen Eingabebereichs
+	 * 
+	 * @param corners
+	 *            Eckpunkte des Eingaberechtecks
+	 */
+	public Quadtree(List<Vertex3d> corners) {
+
+		mMathHelper = MyVectormath.getInstance();
+		mRoot = new QuadtreeNode(corners, 0, NodePosition.ROOT);
+		numberOfNodes++;
+		processedNodes = new HashSet<QuadtreeNode>();
+		mRayNodeMap = new HashMap<Ray, List<QuadtreeNode>>();
+		mRandom = new Random();
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Erzeugt uniform eine weitere Unterteilungsebene innerhalb des Quadtrees
+	 */
+	private void createNextLevel() {
+		numberOfLevels++;
+		List<QuadtreeNode> children = mRoot.getLeafs();
+		Iterator<QuadtreeNode> childIter = children.iterator();
+		while (childIter.hasNext()) {
+			numberOfNodes += 4;
+			childIter.next().createNextLevel();
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mRoot
+	 */
+	public QuadtreeNode getRoot() {
+		return mRoot;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode unterteilt den Eingaberaum so lange gleichmaessig, bis die
+	 * minimale Unterteilungsebene erreicht ist
+	 */
+	public void createSubdivision() {
+
+		assert mRoot != null : "FEHLER: Kein Wurzelknoten gesetzt";
+
+		Float width = mRoot.getWidth(), height = mRoot.getHeight();
+
+		QuadtreeNode node = null;
+
+		while (width > mLowerLimit && height > mLowerLimit) {
+
+			createNextLevel();
+			node = mRoot.getLeafs().get(0);
+			width = node.getWidth();
+			height = node.getHeight();
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Setzt alle Flags der Knoten im Baum zurueck auf Empty
+	 */
+	public void resetTree() {
+		mRoot.resetNode();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Fassaden-Methode, die alle Unterschritte der Markierungen kapselt
+	 * 
+	 * @param component
+	 *            Komponente, fuer die Ecken, Kanten und innenliegende Bereiche
+	 *            markiert werden
+	 * @param positionedComponents
+	 *            Liste mit allen vorab positionierten Komponenten (ausser der
+	 *            Hauptkomponente)
+	 */
+	public void setMarksForComponent(AbstractComponent component,
+			List<AbstractComponent> positionedComponents) {
+
+		if (!component.isSubComponent())
+			resetTree();
+		markQuadtreeNodes(component);
+		markInside(component, positionedComponents);
+		// nachedm alle Markierungen vorgenommen wurden, propagiere alle
+		// Markierungen von den Blaettern in Richtung Wurzel
+		propagateMarkerForNodes(getRoot(), false, true);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode markiert Knoten innerhalb des Quadtrees dahingehend, ob sie eine
+	 * Kante oder eine Ecke der uebergebenen Komponente enthalten
+	 * 
+	 * @param component
+	 *            Komponente, fuer die Quadtree-Nodes markiert werden
+	 */
+	private void markQuadtreeNodes(AbstractComponent component) {
+
+		// markiere zunaechst alle Ecken der Komponente
+		List<Vertex3d> points = component.getVertices();
+		List<Ray> rays = component.getPolygon().getRays();
+
+		List<QuadtreeNode> children = new ArrayList<QuadtreeNode>();
+
+		QuadtreeNode currentNode = null;
+
+		Iterator<Vertex3d> pointIter = points.iterator();
+		Iterator<Ray> rayIter = rays.iterator();
+		Vertex3d currentPoint = null;
+
+		Ray currentRay = null;
+		Float minDistance = null;
+
+		// bestimme die minimale Ausdehnung auf Ebene der Blattknoten, ist die
+		// Breite oder die Hoehe groesser?
+		// wird fuer die Generierung von Abtastpunkten benoetigt
+		QuadtreeNode leaf = getRoot().getLeafs().get(0);
+		if (leaf.getHeight() > leaf.getWidth())
+			minDistance = leaf.getWidth();
+		else
+			minDistance = leaf.getHeight();
+
+		// verwende 1/5 der Distanz
+		minDistance /= 5;
+		ContentType currentContent = null;
+
+		List<QuadtreeNode> cornerNodes = new ArrayList<QuadtreeNode>(
+				points.size());
+
+		// markiere die Knoten im Quadtree, die Eckpunkte der aktuellen
+		// Komponente enthalten
+		while (pointIter.hasNext()) {
+
+			children.clear();
+			currentPoint = pointIter.next();
+
+			assert rayIter.hasNext() : "FEHLER: Es existiert kein Strahl mehr im polygonalen Grundriss";
+			currentRay = rayIter.next();
+
+			// hole alle Blaetter, die den uebergebenen Punkt enthalten
+			children = getLeafsContainingPoint(getRoot(), currentPoint);
+			assert children.size() > 0 : "FEHLER: Es konnte kein Blattknoten ermittelt werden, der den Punkt: "
+					+ currentPoint + " enthaelt";
+
+			// Fange Punkt-auf-Kante-Probleme auf Blattebene ab => wenn die
+			// Blattebene erreicht ist, sollte nur ein Knoten
+			// in CurrentNodes sein => sind mehrere Knoten enthalten, waehle
+			// denjenigen mit der geringsten Distanz zum Gesamtmittelpunkt
+			if (children.size() > 1)
+				currentNode = chooseNodeWithMinDistanceToCenter(children);
+			else
+				currentNode = children.get(0);
+
+			currentContent = currentNode.getContentType();
+
+			// bei leeren Knoten immer auf CORNER setzen
+			if (currentContent == ContentType.EMPTY) {
+				logger.trace("Replacing Nodetype for Node: "
+						+ currentNode.getCenter());
+				currentNode.replaceContentType(ContentType.CORNER);
+			}
+
+			// sofern die Knoten bereits einen Inhalt haben, dann auf FULL
+			else
+				currentNode.replaceContentType(ContentType.FULL);
+
+			cornerNodes.add(currentNode);
+			/*
+			 * if(!component.isSubComponent())currentNode.replaceContentType(
+			 * ContentType.CORNER);
+			 * 
+			 * // bei Subkomponenten ist der Content-Type immer "FULL" else {
+			 * currentNode.replaceContentType(ContentType.FULL); }
+			 */
+			// markEdges(currentRay, minDistance, currentNode, currentPoint,
+			// component.isSubComponent());
+		}
+
+		// markiere nun die Kanten zwischen den Eckpunkten
+		for (int i = 0; i < points.size(); i++) {
+			currentNode = cornerNodes.get(i);
+			currentRay = rays.get(i);
+			currentPoint = points.get(i);
+			markEdges(currentRay, minDistance, currentNode, currentPoint,
+					component.isSubComponent());
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode markiert den Verlauf von Kanten innerhalb der QuadtreeNodes und
+	 * legt fest, ob diese eine Kante enthalten
+	 * 
+	 * @param ray
+	 *            Strahl, der den Verlauf der Kante beschreibt
+	 * @param minDistance
+	 *            Abhaengig von Hoehe / Breite-Verhaeltnis der Nodes, wird
+	 *            verwendet, um Abtastwerte auf dem Strahl zu bestimmen, die
+	 *            dann verwendet werden, um Nodes zu identifizieren, die die
+	 *            Kanten enthalten
+	 * @param currentNode
+	 *            Aktueller Knoten innerhalb des Trees, von dem aus die naechste
+	 *            Berechnung erfolgt (wird fuer Durchwandern des Baumes
+	 *            benoetigt)
+	 * @param currentPoint
+	 *            Abtastpunkt innerhalb des uebergebenen Nodes
+	 */
+	private void markEdges(Ray ray, Float minDistance,
+			QuadtreeNode currentNode, Vertex3d currentPoint,
+			boolean isSubComponent) {
+
+		logger.trace("AKTUELLER STRAHL: " + ray.getDirection());
+
+		// bestimme den naechsten Abtastpunkt
+		MyVector3f rayDirection = ray.getDirection();
+		rayDirection.normalize();
+		rayDirection.scale(minDistance);
+
+		Vertex3d samplePoint = null;
+
+		// fuege den aktuellen Knoten zur HashMap hinzu
+		addNodeToRayMap(ray, currentNode);
+
+		// berechne einen Punkt ausserhalb des aktuellen Nodes in Richtung des
+		// uebergebenen Strahls
+		samplePoint = getSamplingPoint(currentNode, currentPoint.getPosition(),
+				ray.getDirection(), true);
+		// breche ab, wenn der Sample-Point nicht mehr auf dem Liniensegment des
+		// Strahls liegt => Rekursions-Abbruch
+		if (!mMathHelper.isPointOnLineSegment(samplePoint.getPosition(), ray)) {
+
+			// pruefe abschliessend immer den Endpunkt des Strahls, damit dieser
+			// beim Sampling nicht verloren geht
+			if (currentPoint.getPosition().equals(ray.getEnd())) {
+				return;
+			} else {
+				samplePoint.setPosition(ray.getEnd());
+			}
+		}
+
+		QuadtreeNode nextNode = getNodeForPoint(currentNode, samplePoint);
+		assert nextNode != null : "FEHLER: Es konnte kein Blattknoten gefunden werden, der den uebergebenen Punkt enthaelt";
+
+		// markiere den Punkt und alle seine Eltern als Edge-Knoten, sofern sie
+		// noch nicht gekennzeichnet sind
+		QuadtreeNode current = nextNode;
+
+		ContentType currentContentType = current.getContentType();
+
+		// leere Knoten auf EDGE setzen
+		if (currentContentType == ContentType.EMPTY)
+			current.replaceContentType(ContentType.EDGE);
+
+		// nicht-leere Knoten dann auf FULL setzen, wenn es sich nicht um einen
+		// Eckpunkt handelt
+		else if (currentContentType != ContentType.CORNER)
+			current.replaceContentType(ContentType.FULL);
+
+		/*
+		 * if(!isSubComponent) current.replaceContentType(ContentType.EDGE);
+		 * else { current.replaceContentType(ContentType.FULL); }
+		 */
+		// starte die Rekursion
+		markEdges(ray, minDistance, nextNode, samplePoint, isSubComponent);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft den Quadtree bis ein Blattknoten gefunden wird, der
+	 * den uebergebenen Punkt enthaelt. Dieser Knoten wird dann an den Aufrufer
+	 * zurueckgegeben
+	 * 
+	 * @param startNode
+	 *            Startknoten, von dem ausgehend ein Zielknoten gesucht wird
+	 * @param point
+	 *            Punkt, fuer den ein Knoten innerhalb des Baumes gesucht wird
+	 */
+	private QuadtreeNode getNodeForPoint(QuadtreeNode startNode, Vertex3d point) {
+
+		// wenn der uebergebene Knoten bereits den Punkt enthaelt, gebe diesen
+		// zurueck
+		if (mMathHelper.isPointInPolygon(startNode.getPolygon(), point))
+			return startNode;
+
+		QuadtreeNode currentNode = startNode;
+		Integer levelsToAdd = 10;
+
+		// suche einen Elternknoten innerhalb des Baumes, der den Testpunkt
+		// enthaelt
+		// leider reicht es nicht aus, nur bis zu diesem Knoten
+		// zurueckzuwandern, da sonst Punkt-Auf-Kante-Probleme nicht ausreichend
+		// geloest werden koennen
+		// gehe eine vordefinierte Anzahl von zusaetzlichen Ebenen weiter in
+		// Richtung Wurzel
+		while (true) {
+			if (mMathHelper.isPointInPolygon(currentNode.getPolygon(), point)) {
+
+				// breche ab, wenn die vordefinierte Anzahl zusaetzlicher Ebenen
+				// oder die Wurzel erreicht wurde
+				if (levelsToAdd == 0 || !currentNode.hasParent())
+					break;
+
+				// sonst dekrementiere den Ebenen-Zaehler
+				else {
+					levelsToAdd--;
+					currentNode = currentNode.getParent();
+				}
+			} else {
+				if (currentNode.hasParent())
+					currentNode = currentNode.getParent();
+				else
+					assert false : "FEHLER: Es konnte kein Knoten innerhalb des Baumes gefunden werden, der den gesuchten Punkt: "
+							+ point.getPositionPtr() + " enthaelt";
+			}
+		}
+
+		List<QuadtreeNode> children = new ArrayList<QuadtreeNode>();
+
+		// hole alle Blattknoten ausgehend vom berechneten Startknoten, die den
+		// Punkt enthalten
+		children = getLeafsContainingPoint(currentNode, point);
+
+		assert children.size() > 0 : "FEHLER: Fuer den uebergebenen Punkt: "
+				+ point.getPositionPtr()
+				+ " konnten kein Blattknoten ermittelt werden, der den Punkt enthaelt";
+		if (children.size() > 1) {
+			Iterator<QuadtreeNode> nodeIter = children.iterator();
+			while (nodeIter.hasNext()) {
+				currentNode = nodeIter.next();
+				assert mMathHelper.isPointInPolygon(currentNode.getPolygon(),
+						point) : "FEHLER: " + point + " PUNKT: "
+						+ point.getPosition()
+						+ " befindet sich nicht im Polygon: "
+						+ currentNode.getPolygon();
+			}
+		}
+
+		if (children.size() > 1)
+			return chooseNodeWithMinDistanceToCenter(children);
+		else
+			return children.get(0);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet fuer alle uebergebenen Quadtree-Nodes deren Abstand zum
+	 * Mittelpunkt der Flaeche, die durch den gesamten Quadtree beschrieben wird
+	 * und gibt den Knoten zurueck, dessen Mittelpunkt den geringsten Abstand zu
+	 * diesem Mittelpunkt aufweist
+	 * 
+	 * @param nodes
+	 *            Liste mit QuadtreeNodes, deren Abstand zum Mittelpunkt
+	 *            errechnet wird
+	 * @return QuadtreeNode, dessen Abstand zum Mittelpunkt des Gesamtbereichs
+	 *         minimal ist in Bezug auf alle anderen uebergebenen Nodes
+	 */
+	private QuadtreeNode chooseNodeWithMinDistanceToCenter(
+			List<QuadtreeNode> nodes) {
+
+		QuadtreeNode currentNode = null, currentMinDistanceNode = null;
+		Float currentMinDistance = Float.MAX_VALUE, currentDistance = null;
+
+		MyVector3f globalCenter = getRoot().getCenter();
+
+		Iterator<QuadtreeNode> nodeIter = nodes.iterator();
+		while (nodeIter.hasNext()) {
+			currentNode = nodeIter.next();
+
+			currentDistance = mMathHelper.calculatePointPointDistance(
+					currentNode.getCenter(), globalCenter);
+			if (currentDistance < currentMinDistance) {
+				currentMinDistance = currentDistance;
+				currentMinDistanceNode = currentNode;
+			}
+		}
+
+		return currentMinDistanceNode;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode markiert alle Knoten innerhalb des Baumes, die sich (teilweise)
+	 * innerhalb der uebergebenen Komponente befinden
+	 * 
+	 * @param component
+	 *            Komponente, deren Belegung im Baum markiert werden soll
+	 * @param positionedComponents
+	 *            Liste mit allen bereits vorab positionierten Komponenten
+	 */
+	private void markInside(AbstractComponent component,
+			List<AbstractComponent> positionedComponents) {
+
+		MyPolygon polygon = component.getPolygon();
+
+		// die Berechnung muss hier bei den Kindknoten beginnen, da man immer
+		// nur die Mittelpunkte sampelt
+		// durchlaeuft man den Baum absteigend, koennen vollstaendige Aeste
+		// abgeschnitten werden, da die Center-Punkte nicht innerhalb des
+		// Polygons liegen
+		List<QuadtreeNode> leafs = getRoot().getLeafs();
+		Iterator<QuadtreeNode> leafIter = leafs.iterator();
+		QuadtreeNode currentLeaf = null;
+
+		while (leafIter.hasNext()) {
+			currentLeaf = leafIter.next();
+			if (mMathHelper.isPointInPolygon(polygon,
+					new Vertex3d(currentLeaf.getCenter()))) {
+
+				if (!component.isSubComponent())
+					currentLeaf.replaceContentType(ContentType.INSIDE);
+				else {
+
+					// teste, ob sich der Abtastpunkt in einer anderen
+					// Komponente befindet, in diesem Fall wird der ContentType
+					// auf FULL gesetzt
+					if (isInsideOtherComponent(currentLeaf.getCenter(),
+							positionedComponents, component))
+						currentLeaf.replaceContentType(ContentType.FULL);
+
+					// sonst als INSIDE markieren, ueberschreibt keine bereits
+					// gesetzten Markierungen wie CORNER oder EDGE, da INSIDE
+					// eine niedrigere Priorität hat
+					else
+						currentLeaf.replaceContentType(ContentType.INSIDE);
+				}
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet, ob sich der uebergebene Punkt in einer vorab
+	 * positionierten Komponente befindet
+	 * 
+	 * @param point
+	 *            Testpunkt
+	 * @param positionedComponents
+	 *            Liste mit allen vorab positionierten Komponenten
+	 * @param currentComponent
+	 *            Aktuell verarbeitete Komponente
+	 * @return True, falls der Punkt innerhalb des Polygons einer vorab
+	 *         positionierten Komponente (ausser der aktuell verarbeiteten
+	 *         Komponente) liegt, False sonst
+	 */
+	private boolean isInsideOtherComponent(MyVector3f point,
+			List<AbstractComponent> positionedComponents,
+			AbstractComponent currentComponent) {
+
+		// teste zunaechst, ob sich der Punkt innerhalb einer vorab
+		// positionierten Komponente befindet
+		AbstractComponent current = null;
+		for (int i = 0; i < positionedComponents.size(); i++) {
+			current = positionedComponents.get(i);
+			if (current == currentComponent)
+				continue;
+			else {
+				if (mMathHelper.isPointInPolygon(current.getPolygon(), point))
+					return true;
+			}
+		}
+		return false;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft den Baum entweder absteigend oder aufsteigend,
+	 * abhaengig vom backTrack-Flag
+	 * 
+	 * @param node
+	 *            Knoten, von dem ausgehend der Baum durchwandert wird, sofern
+	 *            backtTrack auf false steht, wird die Methode rekursiv fuer die
+	 *            Kinder gecallt, ansonsten werden die Kinder ausgewertet und
+	 *            der Wert des uebergebenen Knotens wird aktualisiert
+	 * @param backTrack
+	 *            Flag legt fest, ob die Rekursion weiterhin eingeleitet wird
+	 *            oder man sich bereits auf dem Rueckweg durch den Baum befindet
+	 * @param firstIteration
+	 *            Flag fuer erste durchgefuehrte Iteration
+	 */
+	private void propagateMarkerForNodes(QuadtreeNode node, boolean backTrack,
+			boolean firstIteration) {
+
+		if (firstIteration)
+			processedNodes.clear();
+
+		boolean firstIterationFlag = false;
+
+		Iterator<QuadtreeNode> nodeIter = null;
+		QuadtreeNode currentParent = null, currentNode = null;
+		List<QuadtreeNode> children = null;
+
+		if (!backTrack) {
+			if (!node.isLeaf()) {
+				children = node.getChildren();
+
+				// wenn die naechste Ebene die Blattebene ist, dann rufe die
+				// Funktion nur noch fuer eines der Kinder auf (Reduktion der
+				// Aufrufe)
+				if (children.get(0).isLeaf()) {
+					propagateMarkerForNodes(children.get(0), false,
+							firstIterationFlag);
+				} else {
+					nodeIter = children.iterator();
+					while (nodeIter.hasNext()) {
+						propagateMarkerForNodes(nodeIter.next(), false,
+								firstIterationFlag);
+					}
+				}
+			}
+			// Blattebene erreicht, Backtracking, falls Elternknoten noch nicht
+			// verarbeitet, reduziert die Anzahl der Aufrufe
+			else {
+				if (node.hasParent()) {
+					QuadtreeNode nextParent = node.getParent();
+					if (!processedNodes.contains(nextParent))
+						propagateMarkerForNodes(node, true, firstIterationFlag);
+				}
+			}
+		}
+
+		// den Baum Richtung Wurzel durchlaufen
+		else {
+			currentParent = node.getParent();
+
+			// adde den aktuellen Parent zur Liste verarbeiteter Knoten
+			processedNodes.add(currentParent);
+
+			children = currentParent.getChildren();
+			int compareResult;
+			ContentType newContentType = null;
+
+			nodeIter = children.iterator();
+
+			// ermittle den Knoten mit dem ContentType hoechster Prioritaet
+			while (nodeIter.hasNext()) {
+				currentNode = nodeIter.next();
+				if (newContentType == null)
+					newContentType = currentNode.getContentType();
+				else {
+					compareResult = newContentType.compareTo(currentNode
+							.getContentType());
+					if (compareResult < 0)
+						newContentType = currentNode.getContentType();
+				}
+			}
+
+			// setze beim Parent den ContentType mit hoechster Prioritaet
+			currentParent.replaceContentType(newContentType);
+
+			// starte die Rekursion aufwaerts nur dann, wenn ein Parent
+			// existiert und dieser noch nicht verarbeitet wurde
+			if (currentParent.hasParent()) {
+				QuadtreeNode nextParent = currentParent.getParent();
+				if (!processedNodes.contains(nextParent))
+					propagateMarkerForNodes(currentParent, true,
+							firstIterationFlag);
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert alle Knoten innerhalb des Baumes, die parallel zum
+	 * uebergebenen Strahl verlaufen und direkte Nachbarn sind
+	 * 
+	 * @param ray
+	 *            Strahl, fuer den Nachbarknoten im Baum gesucht werden
+	 * @return Nachbarknoten der durch den Strahl markierten Knoten (sortiert
+	 *         ausgehend vom Startknoten des Strahls)
+	 */
+	public List<QuadtreeNode> getNeighbourNodesParallelToRay(Ray ray) {
+
+		// hole alle QuadtreeNodes, die vom uebergebenen Strahl geschnitten
+		// werden
+		List<QuadtreeNode> rayNodes = mRayNodeMap.get(ray);
+
+		assert rayNodes != null : "FEHLER: Fuer den uebergebenen Strahl existieren keine markierten Nodes";
+
+		// bestimme einen Mittelpunktsvektor zwischend den ersten beiden
+		// Elementen
+		MyVector3f positionNode0 = rayNodes.get(0).getCenter();
+		MyVector3f positionNode1 = rayNodes.get(1).getCenter();
+		MyVector3f centerVector = new MyVector3f();
+		centerVector.sub(positionNode1, positionNode0);
+
+		// hole den Normalenvektor des QuadtreeNodes
+		MyVector3f normal = rayNodes.get(0).getPolygon().getNormal();
+
+		// und berechne einen zu diesem orthogonalen Vektor in der selben Ebene
+		MyVector3f orthogonalNormal = mMathHelper
+				.calculateOrthogonalVectorWithSamePlane(centerVector, normal);
+		orthogonalNormal.normalize();
+
+		MyVector3f startPosition = null;
+		QuadtreeNode sampleNode = null;
+
+		// verwende den ersten Knoten in der Liste, der keine Ecke ist => sonst
+		// laeuft man Gefahr, eine Kante zu samplen
+		for (int i = 0; i < rayNodes.size(); i++) {
+			if (!rayNodes.get(i).getContentType().equals(ContentType.CORNER)) {
+				sampleNode = rayNodes.get(i);
+				startPosition = sampleNode.getCenter();
+			}
+		}
+
+		assert startPosition != null : "FEHLER: Es konnte kein Knoten gefunden werden, bei dem es sich nicht um eine Ecke handelt";
+
+		Vertex3d startVert = new Vertex3d(startPosition);
+
+		// berechne einen Sampling-Point ausgehend vom 2. Node in der Liste
+		// (dadurch soll garantiert werden, dass keine Kante getroffen wird)
+		Vertex3d samplePoint = getSamplingPoint(sampleNode, startPosition,
+				orthogonalNormal, true);
+
+		// finde einen Knoten, der den Sample-Punkt enthaelt
+		QuadtreeNode neighbour = getNodeForPoint(sampleNode, samplePoint);
+
+		// wenn der gesampelte Node Empty als Type hat, hat man einen Knoten
+		// ausserhalb der Geometrie
+		if (!neighbour.getContentType().equals(ContentType.EMPTY)) {
+			// Vektor umdrehen
+			orthogonalNormal.scale(-1.0f);
+			samplePoint = getSamplingPoint(sampleNode, startPosition,
+					orthogonalNormal, true);
+			neighbour = getNodeForPoint(sampleNode, samplePoint);
+			// assert neighbour.getContentType().equals(ContentType.EMPTY):
+			// "FEHLER: Fuer den berechneten Samplepunkt und die Sampledirection wurde kein leerer Knoten gefunden";
+		}
+
+		// berechne einen Abtastvektor als Mittelpunktsvektor zwischen
+		// gefundenem Knoten und Sample-Knoten
+		MyVector3f sampleVector = new MyVector3f();
+		sampleVector.sub(neighbour.getCenter(), sampleNode.getCenter());
+
+		// verwende den Sample-Vektor, um von allen Knoten auf der Kante deren
+		// Nachbarn zu bestimmen
+		Iterator<QuadtreeNode> nodeIter = rayNodes.iterator();
+		QuadtreeNode currentNode = null;
+
+		List<QuadtreeNode> result = new ArrayList<QuadtreeNode>(rayNodes.size());
+
+		while (nodeIter.hasNext()) {
+			currentNode = nodeIter.next();
+			samplePoint = getSamplingPoint(currentNode,
+					currentNode.getCenter(), sampleVector, false);
+			neighbour = getNodeForPoint(currentNode, samplePoint);
+			assert neighbour != null : "FEHLER: Es konnte kein Nachbar bestimmt werden";
+			result.add(neighbour);
+			neighbour.replaceContentType(ContentType.OUTSIDE);
+
+		}
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft den Baum und liefert alle Blattknoten, die den
+	 * uebergebenen Punkt enthalten. Im Fall von Punkten, die eine Node-Kante
+	 * treffen, koennen mehr als ein Kind zurueckgeliefert werden.
+	 * 
+	 * @param startNode
+	 *            Knoten von dem ausgehend der Baum durchsucht werden soll
+	 * @param point
+	 *            Punkt, fuer den alle Blaetter gesucht werden, die diesen
+	 *            enthalten
+	 * @return Liste mit Blattknoten, die den uebergebenen Punkt enthalten
+	 */
+	private List<QuadtreeNode> getLeafsContainingPoint(QuadtreeNode startNode,
+			Vertex3d point) {
+
+		List<QuadtreeNode> currentNodes = new ArrayList<QuadtreeNode>();
+		List<QuadtreeNode> children = new ArrayList<QuadtreeNode>();
+		Iterator<QuadtreeNode> nodeIter = null;
+
+		QuadtreeNode current = null;
+		MyPolygon polygon = null;
+
+		currentNodes.add(startNode);
+		while (currentNodes.size() > 0) {
+
+			nodeIter = currentNodes.iterator();
+			while (nodeIter.hasNext()) {
+				current = nodeIter.next();
+				polygon = current.getPolygon();
+				if (mMathHelper.isPointInPolygon(polygon, point)) {
+					children.addAll(current.getChildren());
+				}
+				// Punkt nicht im Polygon, Knoten entfernen
+				else
+					nodeIter.remove();
+			}
+
+			// wenn keine Kinder mehr gefunden wurden, hat man die Blattebene
+			// erreicht, gebe currentNodes zurueck
+			if (children.size() == 0) {
+				assert currentNodes.size() > 0 : "FEHLER: Es konnte kein Blattknoten gefunden werden, der den uebergebenen Punkt: "
+						+ point.getPositionPtr() + " enthaelt";
+				return currentNodes;
+			} else {
+				currentNodes.clear();
+				currentNodes.addAll(children);
+				children.clear();
+			}
+		}
+		assert false : "FEHLER: Es konnten keine Blattknoten innerhalb des Baumes ermittelt werden, die den uebergebenen Punkt: "
+				+ point.getPositionPtr() + " enthalten";
+		return null;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public void printStatistics() {
+		String lineBreak = System.getProperty("line.separator");
+		String message = "Baumstatisktiken: " + lineBreak;
+		message += "Anzahl Knoten: " + numberOfNodes + lineBreak;
+		message += "Hoehe: " + numberOfLevels;
+		System.out.println(message);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode dient dem Hinzufuegen von Ray-Knoten-Paaren zur Ray-Node-HashMap.
+	 * Diese speichert fuer jeden Strahl, welche Knoten diesen enthalten.
+	 * Dadurch muessen diese Listen nicht wiederholt berechnet werden.
+	 * 
+	 * @param ray
+	 *            Strahl, fuer den der Knoten in der HashMap hinzugefuegt werden
+	 *            soll
+	 * @param node
+	 *            Knoten, der zur Liste des uebergebenen Strahls hinzugefuegt
+	 *            werden soll
+	 */
+	private void addNodeToRayMap(Ray ray, QuadtreeNode node) {
+		List<QuadtreeNode> nodes = null;
+		if (!mRayNodeMap.containsKey(ray)) {
+			nodes = new ArrayList<QuadtreeNode>();
+			nodes.add(node);
+			mRayNodeMap.put(ray, nodes);
+		} else {
+			nodes = mRayNodeMap.get(ray);
+			// Knoten nicht mehrfach einfuegen
+			if (nodes.contains(node))
+				return;
+			else
+				nodes.add(node);
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet einen Sampling-Punkt ausgehend vom uebergebenen Knoten
+	 * in der uebergebenen Richtung. Die Rueckgabe erfolgt, sobald ein Punkt
+	 * berechnet wurde, der ausserhalb des Uebergabeknotens liegt
+	 * 
+	 * @param node
+	 *            Knoten, von dem ausgehend ein Sampling-Punkt berechnet werden
+	 *            soll
+	 * @param start
+	 *            Startposition von der ausgehend der Sampling-Point bestimmt
+	 *            werden soll
+	 * @param direction
+	 *            Richtung, in die gesameplt wird
+	 * @param scale
+	 *            Flag wird verwendet, um festzulegen, ob der uebergebene
+	 *            Richtungsvektor normalisiert und skaliert werden soll, bevor
+	 *            Sampling-Punkte berechnet werden
+	 * @return Samplingpunkt ausserhalb des Polygons, das der Node beschreibt
+	 */
+	private Vertex3d getSamplingPoint(QuadtreeNode node, MyVector3f start,
+			MyVector3f direction, boolean scale) {
+
+		Vertex3d startVert = new Vertex3d(start.clone());
+		MyPolygon polygon = node.getPolygon();
+
+		boolean pointInPoly = mMathHelper.isPointInPolygon(polygon, startVert);
+		assert pointInPoly : "FEHLER: Der uebergebene Punkt: "
+				+ startVert.getPositionPtr()
+				+ " befindet sich nicht innerhalb des uebergebenen Knotens: "
+				+ polygon;
+		MyVector3f clonedDirection = direction.clone();
+
+		// wenn skaliert werden soll, normalisiere und skaliere anschliessend
+		if (scale) {
+
+			// waehle die Skalierung des Punktes zufallsbasiert in einem Range
+			// von 0.1-0.3
+			// Ziel ist die Reduktion der Kantentreffer durch das Sampling
+			Float scaleFactor = mRandom.nextFloat();
+			scaleFactor *= 0.2f;
+			scaleFactor += 0.1f;
+
+			// bestimme die Sampling Rate orientiert an den Ausdehnungen des
+			// Ausgnagsknotens
+			Float minDistance = null;
+			if (node.getHeight() > node.getWidth())
+				minDistance = node.getWidth();
+			else
+				minDistance = node.getHeight();
+
+			// Sampling-Rate erhoehen
+			minDistance *= scaleFactor;
+			clonedDirection.normalize();
+			clonedDirection.scale(minDistance);
+		}
+
+		// addiere so lange den skalierten Richtungsvektor auf, bis ein Punkt
+		// ausserhalb des Nodes getroffen wird
+		while (mMathHelper.isPointInPolygon(polygon, startVert)) {
+			startVert.getPositionPtr().add(clonedDirection);
+		}
+
+		// gebe diesen zurueck
+		return startVert;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert alle QuadtreeNodes aus dem Baum, die den uebergebenen
+	 * Strahl enthalten, hierfuer greift man auf die HashMap zurueck.
+	 * 
+	 * @param ray
+	 *            Strahl, fuer den alle Knoten gesucht werden, die ihn enthalten
+	 * @return Liste mit QuadtreeNodes, die durch den Strahl geschnitten werden
+	 */
+	public List<QuadtreeNode> getNodesForRay(Ray ray) {
+
+		if (mRayNodeMap.containsKey(ray))
+			return mRayNodeMap.get(ray);
+		else
+			return new ArrayList<QuadtreeNode>(0);
+
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

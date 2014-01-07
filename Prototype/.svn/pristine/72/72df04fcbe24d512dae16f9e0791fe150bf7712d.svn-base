@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+  targetNamespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/City"
+  xmlns:smcb_ci="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/City"
+  xmlns:smcb_ct="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/CommonTypes"
+  xmlns:smcb_fp="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Footprint"
+  xmlns:smcb_fl="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Floor"
+  xmlns:smcb_co="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Component"
+  xmlns:smcb_xsi="https://www.w3.org/2001/XMLSchema-instance"
+  xmlns:smcb_bu="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Building"
+  xmlns:smcb_buj="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/BuildingJugendstil"
+  xmlns:smcb_ro="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Roof"
+  xmlns:smcb_budt="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/BuildingDoppelantentempel"
+  elementFormDefault="qualified">
+
+  <xs:import
+    namespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Building"
+    schemaLocation="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Building/BuildingSchema.xsd"/>
+  <xs:import
+    namespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/BuildingJugendstil"
+    schemaLocation="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/BuildingJugendstil/BuildingJugendstilSchema.xsd"/>
+  <xs:import
+    namespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/BuildingDoppelantentempel"
+    schemaLocation="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/BuildingDoppelantentempel/BuildingDoppelantentempelSchema.xsd"/>
+  <xs:import
+    namespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Component"
+    schemaLocation="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Component/ComponentSchema.xsd"/>
+  <xs:import namespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Floor"
+    schemaLocation="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/FloorSchema.xsd"/>
+  <xs:import
+    namespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Footprint"
+    schemaLocation="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Footprint/FootprintSchema.xsd"/>
+  <xs:import namespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Roof"
+    schemaLocation="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/Roof/RoofSchema.xsd"/>
+  <xs:import
+    namespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/CommonTypes"
+    schemaLocation="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/CommonTypes/CommonTypes.xsd"/>
+  <xs:element name="city">
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element ref="smcb_ci:buildingDescriptor" minOccurs="1" maxOccurs="unbounded"/>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:element name="buildingDescriptor">
+    <xs:annotation>
+      <xs:documentation xml:lang="en"> This element contains all necessary information to construct
+        a city based on a number of different building specifications. </xs:documentation>
+    </xs:annotation>
+    <xs:complexType>
+      <xs:sequence>
+        <xs:element name="count" type="xs:positiveInteger">
+          <xs:annotation>
+            <xs:documentation xml:lang="en"> Number of buildings which are constructed based on the
+              given building description. </xs:documentation>
+          </xs:annotation>
+        </xs:element>
+        <xs:choice>
+          <xs:choice>
+            <xs:element ref="smcb_bu:building"/>
+            <xs:element ref="smcb_buj:buildingJugendstil"/>
+            <xs:element ref="smcb_budt:buildingDoppelantentempel"/>
+          </xs:choice>
+          <xs:sequence>
+            <xs:element name="buildingType" type="smcb_ci:class"/>
+            <xs:element ref="smcb_ct:extern"/>
+          </xs:sequence>
+        </xs:choice>
+      </xs:sequence>
+    </xs:complexType>
+  </xs:element>
+
+  <xs:simpleType name="class">
+    <xs:restriction base="xs:string">
+      <xs:enumeration value="ArbitraryBuilding"/>
+      <xs:enumeration value="JugendstilBuilding"/>
+      <xs:enumeration value="Doppelantentempel"/>
+    </xs:restriction>
+  </xs:simpleType>
+
+</xs:schema>

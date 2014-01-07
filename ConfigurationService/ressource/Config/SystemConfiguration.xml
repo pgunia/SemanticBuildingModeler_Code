@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<system xmlns="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/System"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/System SystemSchema.xsd">
+    <applicationWindow>
+        <width>1000</width>
+        <height>700</height>
+    </applicationWindow>
+    <cityConfiguration>
+    
+    	<!--  WINDOWS -->
+    	<!-- <configFolder>C:\Users\Patrick\Documents\GitHub\SemanticCityBuilder\XML\City</configFolder> -->
+       
+        <!-- <configFolder>C:\\Users\Patrick\Dropbox\Promotion\\XML-Konfigurationen</configFolder>-->
+       
+		<!-- OS X -->       
+        <configFolder>/Users/Patrick/SemanticCityBuilder/XML/City</configFolder>
+
+        <configFile>CityExample.xml</configFile>
+    </cityConfiguration>
+    <textures>
+        <supportedTextureCategories>Wall,Roof,Ground,Test</supportedTextureCategories>
+        <maxTextureSize>256</maxTextureSize>
+        <maxTextureScaleFactor>4</maxTextureScaleFactor>
+        
+        <!-- WINDOWS -->
+        <!-- <texturePath>C:\Users\Patrick\Documents\GitHub\SemanticCityBuilder\Models\SystemTextures</texturePath> -->
+        
+        <!-- OS X -->
+        <texturePath>/Users/Patrick/SemanticCityBuilder/Models/SystemTextures</texturePath>
+    </textures>
+    <importModels>
+        <supportedModelCategories>Window,Door,Pillar_Dorisch,Pillar_Ionisch,Triglyphe,Portal,Moulding_Gotisch,Moulding_Eckstein,Window_Jugendstil,Ledge</supportedModelCategories>
+        
+        <!-- WINDOWS -->
+        <!-- <modelPath>C:\Users\Patrick\Documents\GitHub\SemanticCityBuilder\Models\SystemModels</modelPath> -->
+        
+        <!-- OS X -->
+        <modelPath>/Users/Patrick/SemanticCityBuilder/Models/SystemModels</modelPath>
+        
+    </importModels>
+    <exportModels>    
+        <exportFolder>ressource/Export/</exportFolder>
+        
+        <!-- OS X -->
+        <!-- <exportFolder>/Users/Patrick/Dropbox/Promotion/</exportFolder> -->
+        <exportFile>ModelExport2</exportFile>
+    </exportModels>
+</system>

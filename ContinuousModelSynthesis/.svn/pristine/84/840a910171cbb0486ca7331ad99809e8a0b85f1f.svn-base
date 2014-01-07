@@ -1,0 +1,306 @@
+package modelsynthesis.algorithm;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
+import math.MyPolygon;
+import math.MyVectormath;
+import modelsynthesis.model.ComponentState;
+import modelsynthesis.model.Face;
+import modelsynthesis.model.FacePosition;
+import modelsynthesis.model.RayWrapper;
+import modelsynthesis.model.State;
+import modelsynthesis.model.VertexWrapper;
+
+import org.apache.log4j.Logger;
+
+/**
+ * Klasse berechnet basierend auf dem Eingabepolygon eine Menge moeglicher
+ * Zuweisungen fuer Kanten und Vertices
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public class RuleComputation {
+
+	/** Logging-Instanz */
+	protected final static Logger LOGGER = Logger
+			.getLogger("modelsynthesis.algorithm.rulecomputation");
+
+	/**
+	 * Strahlen der Ausgangssegmente, die fuer die Regelbestimmung ermittelt
+	 * wurden
+	 */
+	private transient List<RayWrapper> mRays = null;
+
+	/**
+	 * Face aus der Liste der berechneten Faces, das mit dem Eingabepolygon
+	 * identisch ist
+	 */
+	private transient Face mInputPolyFace = null;
+
+	/** Mapsstruktur speichert die gueltigen States fuer alle Eingabeelemente */
+	private transient Map<String, List<ComponentState>> mLabelToStatesMap = new TreeMap<String, List<ComponentState>>();
+
+	/**
+	 * Liste mit allen Vertices, die bei der initialen Berechnung erzeugt wurden
+	 */
+	private transient List<VertexWrapper> mVertices = null;
+
+	/**
+	 * Menge mit saemtliche Labels, die vorab fuer Strahlen und Vertices
+	 * berechnet wurden
+	 */
+	private transient Set<String> mUsedLabels = null;
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mRays
+	 *            Liste mit allen Strahlen, die zwischen den einzelnen Segmenten
+	 *            ermittelt wurden
+	 * @param mFaces
+	 *            Liste mit allen Faces, die basierend auf der FaceComputation
+	 *            ermittelt wurden
+	 * @param inputPoly
+	 *            Eingabepolygon in das Hauptverfahren
+	 */
+	public RuleComputation(final List<RayWrapper> mRays,
+			final MyPolygon inputPoly, final List<VertexWrapper> vertices,
+			final Set<String> usedLabels) {
+		super();
+		this.mRays = mRays;
+		this.mVertices = vertices;
+		this.mUsedLabels = usedLabels;
+
+		// Face fuer Eingabepolygon erzeugen
+		mInputPolyFace = new Face(State.UNDEFINED, null, inputPoly);
+		LOGGER.info("ID des Eingabepolygons: " + mInputPolyFace.getID());
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet basierend auf den vorab ermittelten Strukturen Regeln,
+	 * die fuer die spaetere Zuweisung benoetigt werden
+	 * 
+	 * @return Mapstruktur, die basierend auf den Labels der Eingabekomponenten
+	 *         gueltige Status fuer Kanten und Vertices berechnet
+	 */
+	public Map<String, List<ComponentState>> computeRules() {
+
+		// berechne basierend auf den Strahlensegmenten saemtliche gueltigen
+		// Strahlenstates
+		computeValidRayStates();
+		computeValidVertexStates();
+
+		printRules();
+
+		return mLabelToStatesMap;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode gibt alle berechneten Regeln fuer die jeweiligen Labels aus
+	 */
+	private void printRules() {
+
+		String curLabel = null;
+		Iterator<String> ruleIter = mLabelToStatesMap.keySet().iterator();
+		List<ComponentState> states = null;
+		int ruleCount = 0;
+		
+		while (ruleIter.hasNext()) {
+			curLabel = ruleIter.next();
+			states = mLabelToStatesMap.get(curLabel);
+			ruleCount += states.size();
+			LOGGER.info("Label: " + curLabel);
+			for (int i = 0; i < states.size(); i++) {
+				LOGGER.info("State " + i + ", ID: " + states.get(i).getID());
+				LOGGER.info(states.get(i));
+			}
+		}
+		LOGGER.info("Insgesamt wurden " + ruleCount + " verschiedene Regeln berechnet.");
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode berechnet saemtliche gueltigen Strahlenstates anhand des
+	 * Eingabepolygons
+	 */
+	private void computeValidRayStates() {
+
+		// Strahlen durchlaufen und States assignen
+		ComponentState compState = null;
+		RayWrapper curRay = null;
+		List<ComponentState> states = null;
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		for (int i = 0; i < mRays.size(); i++) {
+
+			compState = new ComponentState();
+			curRay = mRays.get(i);
+			if (!mUsedLabels.contains(curRay.getLabel()))
+				continue;
+
+			LOGGER.trace("RAY LABEL: " + curRay.getLabel() + " Ray ID: "
+					+ curRay.getID());
+
+			// leite nur Regeln von solchen Strahlen ab, die adjazent zu jeweils
+			// zwei Faces verlaufen
+			if (curRay.getAdjacentFaces().size() == 2) {
+				
+				if(curRay.getFace(FacePosition.UPPER) == null || curRay.getFace(FacePosition.LOWER) == null) {
+					LOGGER.error("Fuer Ray " + curRay + " konnten keine gueltigen Facezuordnungen berechnet werden.");
+					continue;
+				}
+				LOGGER.trace("UPPER: " + curRay.getFace(FacePosition.UPPER).getID() + " LOWER: " + curRay.getFace(FacePosition.LOWER).getID());
+				 
+				// wenn der Strahl auf der linken Seite das Eingabepolygon
+				// enthaelt, setze den State auf INTERIOR
+				if (mathHelper.isPointInPolygon(mInputPolyFace.getFacePoly(),
+						curRay.getFace(FacePosition.UPPER).getFacePoly()
+								.getCenter()))
+					compState.addAsignment(FacePosition.UPPER, State.INTERIOR);
+				else
+					compState.addAsignment(FacePosition.UPPER, State.EXTERIOR);
+
+				// gleiches Prinzip fuer das rechte Face
+				if (mathHelper.isPointInPolygon(mInputPolyFace.getFacePoly(),
+						curRay.getFace(FacePosition.LOWER).getFacePoly()
+								.getCenter()))
+					compState.addAsignment(FacePosition.LOWER, State.INTERIOR);
+				else
+					compState.addAsignment(FacePosition.LOWER, State.EXTERIOR);
+
+				states = mLabelToStatesMap.get(curRay.getLabel());
+				if (states == null) {
+					states = new ArrayList<ComponentState>();
+					mLabelToStatesMap.put(curRay.getLabel(), states);
+				}
+				
+				// nur wenn kein aequivalenter State vorhanden ist, adden
+				if (!doesListContainEquivalentState(compState, states)) {
+					states.add(compState);
+					LOGGER.trace("Adding State: " + compState);
+				}
+			}
+		}
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet, ob die uebergebene Liste bereits ein Status mit gleichen Zuweisungen enthaelt
+	 * @param state Status, fuer den getestet wird, ob ein aequivalenter Status in der Uebergabeliste vorhanden ist
+	 * @param states Liste mit Statusinstanzen
+	 * @return True, falls ein aequivalenter Status in der Liste vorkommt, False sonst
+	 */
+	private boolean doesListContainEquivalentState(final ComponentState state, final List<ComponentState> states) {
+		
+		// durchlaufe die Liste und pruefe fuer jeden Status, ob er aequivalent zum Uebergabestatus ist
+		ComponentState cur = null;
+		for(int i = 0; i < states.size(); i++) {
+			cur = states.get(i);
+			if(state.isEquivalent(cur)) return true;
+			
+		}
+		return false;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft saemtliche waehrend der initialen Faceberechnung
+	 * ermittelten Vertices und leitet fuer jedes Vertex Regeln ab. Diese werden
+	 * in einer Liste gesammelt, die ueber das Vertexlabel indiziert wird.
+	 */
+	private void computeValidVertexStates() {	
+		
+		// vollstaendig INTERIOR und EXTERIOR gilt fuer alle Labels als gueltige Zuweisung
+		// verwende die vorgefertigten States, um die Anzahl der notwendigen Strahlen bei der Regelberechnung zu minimieren
+		// => vollstaendige EXTERIOR-States werden bsw. erst ab 5 Strahlen getroffen
+		ComponentState interior = new ComponentState();
+		for (FacePosition curPos : FacePosition.values()) {
+			// Raystates skippen
+			if(curPos == FacePosition.UPPER || curPos == FacePosition.LOWER) continue;
+			interior.addAsignment(curPos, State.INTERIOR);
+		}
+
+		// vollstaendig ausserhalb
+		ComponentState exterior = new ComponentState();
+		for (FacePosition curPos : FacePosition.values()) {
+			// Raystates skippen
+			if(curPos == FacePosition.UPPER || curPos == FacePosition.LOWER) continue;
+			exterior.addAsignment(curPos, State.EXTERIOR);
+		}
+		
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		VertexWrapper curVert = null;
+		
+		List<ComponentState> states = null;
+		for(int i = 0; i < mVertices.size(); i++) {
+			
+			curVert = mVertices.get(i);
+			
+			// ueberspringe nicht "relevante" Labels bsw. Start- und Endlabels etc.
+			if(!mUsedLabels.contains(curVert.getLabel())) continue;
+			
+			// letzter Status entspricht der Eingabestruktur
+			// hole alle vier adjazenten Faces und pruefe jeweils, ob sich ihre
+			// Mittelpunkte im Inneren des Eingabepoylgons befinden
+			ComponentState newState = new ComponentState();
+			for (FacePosition curPos : FacePosition.values()) {
+				Face curFace = curVert.getFace(curPos);
+				if (curFace != null) {
+					if (mathHelper.isPointInPolygon(mInputPolyFace
+							.getFacePoly(), curFace.getFacePoly().getCenter())) {
+						newState.addAsignment(curPos, State.INTERIOR);
+					} else
+						newState.addAsignment(curPos, State.EXTERIOR);
+				}
+			}
+			
+			// ein Vertex-Regel ist nur dann gueltig, wenn sie fuer jedes der vier adjazenten Faces eine Festlegung enthaelt
+			if(newState.getAssignmentCount() < 4) continue;
+			
+			// sonst teste, ob bereits ein Mapping fuer die Regeln existiert
+			states = mLabelToStatesMap.get(curVert.getLabel());
+			
+			// wenn noch kein Mapping existiert, dann leeres Objekt erstellen und zuweisen
+			if(states == null) {
+				states = new ArrayList<ComponentState>();
+				
+				// INTERIOR- und EXTERIOR-States adden
+				states.add(interior);
+				states.add(exterior);
+				mLabelToStatesMap.put(curVert.getLabel(), states);
+			}
+			
+			// neuen State adden, wenn er noch nicht vorkommt
+			if(doesListContainEquivalentState(newState, states)) {
+				LOGGER.trace("SKIPPED: Status ist bereits enthalten!");
+				continue;
+			}
+			else {
+				/*
+				LOGGER.trace("Adde Regel an Position: " + states.size() + " fuer Vertexlabel " + curVert.getLabel() +  " ID: " + curVert.getID());
+				LOGGER.trace("Faces: ");
+				
+				Set<FacePosition> pos = newState.getAssignments().keySet();
+				Iterator<FacePosition> posIter = pos.iterator();
+				FacePosition facePos = null;
+				while(posIter.hasNext()) {
+					facePos = posIter.next();
+					LOGGER.info("Pos: " + facePos + " Face: " + curVert.getFace(facePos).getID());
+				}
+				*/
+				states.add(newState);
+			}
+		}
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

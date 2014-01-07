@@ -1,0 +1,174 @@
+package semantic.building.modeler.prototype.graphics.complex;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import processing.core.PApplet;
+import semantic.building.modeler.configurationservice.model.enums.Side;
+import semantic.building.modeler.math.MyPolygon;
+import semantic.building.modeler.math.MyVector3f;
+import semantic.building.modeler.math.Vertex3d;
+
+/**
+ * 
+ * @author Patrick Gunia Klasse dient der Repraesentation von Objekten, die aus
+ *         beliebigen Grundrissen durch Extrusion erzeugt werden. Die Quelle der
+ *         verwendeten Grundriss ist dabei beliebig
+ * 
+ */
+
+public class FreeComplex extends AbstractComplex {
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "free";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void create() {
+
+		assert mFootprint != null : "FEHLER: Es wurde kein polygonaler Grundriss gesetzt!";
+		assert mHeight != null : "FEHLER: Es ist keine Hoehe angegeben";
+
+		extrudeFootprint();
+
+		// alle Berechnungen durchfuehren
+		finalizeCreation();
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Standard-Konstruktor fuer Vertexlisten, die aus Deckenquads erzeugt
+	 * werden => hierbei geht man davon aus, dass die uebergebene Vertexliste
+	 * auf Hoehe der spaeteren Decke liegt (da sie ueber eines der verwendeten
+	 * Merging-Verfahren erzeugt wurde). Der Konstruktor verschiebt die Vertices
+	 * dann zunaechst auf die Zielhoehe der Bodenflaeche, damit anschliessend
+	 * nach dem Standardverfahren extrudiert werden kann
+	 * 
+	 * @param parent
+	 *            Applet-Instanz, die fuer das Zeichnen des komplexen Objekts
+	 *            benoetigt wird
+	 * @param vertices
+	 *            Liste mit Vertices, die den Grundriss im Uhrzeigersinn
+	 *            definieren
+	 * @param height
+	 *            Hoehe des komplexen Objekts
+	 * @param directionToSideMap
+	 *            Zuordnung von Face-Normalen zu Ausrichtungen, darueber kann
+	 *            man automatisiert Richtungen fuer die Faces setzen
+	 * @param isTop
+	 *            Flag zeigt an, ob das uebergebene Polygon die Boden- oedr die
+	 *            Deckenflaeche beschreibt
+	 */
+	public FreeComplex(PApplet parent, List<Vertex3d> vertices, Float height,
+			Map<MyVector3f, Side> directionToSideMap, boolean isTop) {
+		super(parent, height);
+
+		if (directionToSideMap != null)
+			mNormalToDirectionMap = directionToSideMap;
+		mVertices = new ArrayList<Vertex3d>();
+
+		// erzeuge eine standardisierte Vertexabfolge => dadurch sollen Probleme
+		// bei der Normalenausrichtung vermieden werden
+		List<Vertex3d> reorderedVertices = optimizeVertexOrderNewSchool(vertices);
+		this.mFootprint = new MyPolygon(reorderedVertices);
+
+		// wenn das uebergebene Polygon die Deckenflaeche beschreibt, verschiebe
+		// alle Vertices zunaechst entgegen der Face-Normale auf die Bodenhoehe
+		if (isTop) {
+			MyVector3f translationDirection = mFootprint.getNormal();
+			translationDirection.scale(-mHeight);
+			mFootprint.translate(translationDirection);
+		}
+
+		String vertexDefinitions = "";
+		String lineSeparator = System.getProperty("line.separator");
+
+		List<Vertex3d> footprintVerts = mFootprint.getVertices();
+		LOGGER.info("REARRANGED VERTICES: ");
+		for (int j = 0; j < footprintVerts.size(); j++) {
+
+			MyVector3f pos = footprintVerts.get(j).getPosition();
+			vertexDefinitions += "mVertices.add(new Vertex3d(" + pos.x + "f, "
+					+ pos.y + "f, " + pos.z + "f));" + lineSeparator;
+		}
+		LOGGER.info(vertexDefinitions);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor wird bei Clone-Operationen aufgerufen und erzeugt zunaechst
+	 * nur ein leeres Merged-Objekt, aller weiteren Berechnungen und Komponenten
+	 * werden durch die Haupt-Clone-Berechnung durchgefuehrt
+	 * 
+	 * @param parent
+	 *            Applet-Instanz, die fuer das Zeichnen des komplexen Objekts
+	 *            benoetigt wird
+	 * @param height
+	 *            Hoehe des komplexen Objekts
+	 * @param directionToSideMap
+	 *            Zuordnung von Face-Normalen zu Ausrichtungen, darueber kann
+	 *            man automatisiert Richtungen fuer die Faces setzen
+	 */
+	public FreeComplex(PApplet parent, Float height,
+			Map<MyVector3f, Side> directionToSideMap) {
+		super(parent, height);
+		mNormalToDirectionMap = directionToSideMap;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor
+	 * 
+	 * @param parent
+	 *            Applet-Instanz, die fuer das Zeichnen des komplexen Objekts
+	 *            benoetigt wird
+	 * @param footprint
+	 *            Polygon, das den Grundriss des Objekts beschreibt, dieser wird
+	 *            nachfolgend extrudiert
+	 * @param height
+	 *            Hoehe des komplexen Objekts
+	 * @param directionToSideMap
+	 *            Zuordnung von Face-Normalen zu Ausrichtungen, darueber kann
+	 *            man automatisiert Richtungen fuer die Faces setzen
+	 * @param isTop
+	 *            Flag zeigt an, ob das uebergebene Polygon die Boden- oedr die
+	 *            Deckenflaeche beschreibt
+	 */
+	public FreeComplex(PApplet parent, MyPolygon footprint, Float height,
+			Map<MyVector3f, Side> directionToSideMap, boolean isTop) {
+		super(parent, height);
+
+		// verwende eine Kopie des Grundrisses
+		mFootprint = footprint.clone();
+		if (directionToSideMap != null)
+			mNormalToDirectionMap = directionToSideMap;
+		mVertices = new ArrayList<Vertex3d>();
+
+		// wenn das uebergebene Polygon die Deckenflaeche beschreibt, verschiebe
+		// alle Vertices zunaechst entgegen der Face-Normale auf die Bodenhoehe
+		if (isTop) {
+			MyVector3f translationDirection = mFootprint.getNormal();
+			translationDirection.scale(-mHeight);
+			mFootprint.translate(translationDirection);
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	protected AbstractComplex cloneConcreteComponent() {
+		return new FreeComplex(mParent, mHeight, mNormalToDirectionMap);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

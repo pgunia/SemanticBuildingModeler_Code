@@ -1,0 +1,5 @@
+package modelsynthesis.model;
+
+public enum State {
+	INTERIOR, EXTERIOR, UNDEFINED;
+}

@@ -1,0 +1,45 @@
+package math;
+
+import javax.vecmath.Vector2f;
+
+/**
+ * 
+ * @author Patrick Gunia
+ * 
+ * Vektorklasse zur Kapselung der verwendeten Vektorbibliothek vor der Anwendung. 
+ * Dient der Verwaltung von zweidimensionalen Vektoren.
+ *
+ */
+
+public class MyVector2f extends Vector2f implements Cloneable{
+
+	public MyVector2f() {
+		super();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public MyVector2f(final float arg0, final float arg1) {
+		super(arg0, arg1);
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public MyVector2f(final float[] arg0) {
+		super(arg0);
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Erstellt eine Kopie des Vektors und gibt diese an den Aufrufer zurueck
+	 * 
+	 * @return Kopie des Vektors
+	 */
+	@Override
+	public MyVector2f clone() {
+		final MyVector2f clone = (MyVector2f) super.clone();
+		clone.x = this.x;
+		clone.y = this.y;
+		return clone;
+		
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

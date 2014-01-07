@@ -1,0 +1,129 @@
+package semantic.city.builder.weightedstraightskeleton.result;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import org.apache.log4j.Logger;
+
+import semantic.city.builder.math.Vertex3d;
+
+/**
+ * 
+ * @author Patrick Gunia
+ * 
+ *         Eine Instanz dieser Klasse speichert das Ergebnis der
+ *         Straight-Skeleton-Berechnung. Ein Dach besteht dabei aus einer Menge
+ *         von Oberflaechenelementen, die entweder aus 3 oder 4 Punkten
+ *         bestehen. Solche Face-Elemente werden durch die Zwischenschritte des
+ *         Algorithmus gespeichert. Fuer jede Kante wird ein ResultFace
+ *         erstellt, das saemtliche Unterelemente dieses Faces speichert. Ein
+ *         SkeletonResult besteht dann aus einer Menge solcher ResultFaces
+ * 
+ */
+
+public class SkeletonResultComplex {
+
+	/** Logger */
+	protected static Logger LOGGER = Logger
+			.getLogger(SkeletonResultComplex.class);
+
+	/** speichert saemtliche Faces des gesamten Daches */
+	private List<ResultFace> mFaces = null;
+
+	/**
+	 * speichert saemtliche Vertex3d-Datenstrukturen, die waehrend der
+	 * Berechnung erstellt wurden
+	 */
+	private List<Vertex3d> mVertexBuffer = null;
+
+	private int verticesGesamt = 0;
+
+	private int cached = 0;
+
+	// ------------------------------------------------------------------------------------------
+
+	public SkeletonResultComplex() {
+		mFaces = new ArrayList<ResultFace>();
+		mVertexBuffer = new ArrayList<Vertex3d>();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuegt Vertices zum globalen Vertex-Buffer des Ergebnisobjekts
+	 * hinzu. Wenn das hinzugefuegte Vertex bereits vorhanden ist, so wird eine
+	 * Referenz auf das vorhandene Vertex zurueckgegeben, sonst wird das neue
+	 * Vertex hinzugefuegt und eine Referenz auf dieses dient als return-Wert
+	 * 
+	 * @param vertex
+	 *            Vertex3d-Datenstruktur, die zum Vertex-Buffer hinzugefuegt
+	 *            werden soll
+	 * @return Referenz auf das Vertex3d-Objekt im Vertex-Buffer
+	 */
+	public Vertex3d addVertex(final Vertex3d vertex) {
+
+		int index = -1;
+		verticesGesamt++;
+		index = isVertexInBuffer(vertex);
+		if (index != -1) {
+			cached++;
+			return mVertexBuffer.get(index);
+		} else {
+			mVertexBuffer.add(vertex);
+			return vertex;
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Da die equals-Methode von Vertex3d Punkte mit einem Toleranzbereich
+	 * vergleicht, muss hier ein anderer Ansatz implementiert werden, da solche
+	 * Toleranz bei der Texturberechnung inakzeptabel sind. Darum vergleicht man
+	 * hier nur die Koordinatenvektoren miteinander. Wird ein Vertex gefunden,
+	 * das die gleiche Position besitzt, wie das Uebergabevertex, so wird sein
+	 * Index zurueckgereicht.
+	 * 
+	 * @param vertex
+	 *            Vertex, fuer das eine Positionsentsprechung im Buffer gesucht
+	 *            wird
+	 * @return Index des Vertex im Buffer, falls es bereits vorhanden war, -1
+	 *         sonst
+	 */
+	private int isVertexInBuffer(Vertex3d vertex) {
+		for (int i = 0; i < mVertexBuffer.size(); i++) {
+			if (mVertexBuffer.get(i).getPosition().equals(vertex.getPosition()))
+				return i;
+		}
+		return -1;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Fuegt das uebergebene Face-Element zum Vector hinzu.
+	 * 
+	 * @param face
+	 *            ResultFace-Objekt, das zum Ergebnisvektor hinzugefuegt wird
+	 */
+	public void addFaceToResult(ResultFace face) {
+		if (mFaces.indexOf(face) == -1) {
+			mFaces.add(face);
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public List<ResultFace> getFaces() {
+		return mFaces;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public void printStats() {
+		LOGGER.info("Insgesamt wurden "
+				+ verticesGesamt
+				+ " Vertices innerhalb der Result-Strukturen angefordert, von diesen wurden "
+				+ cached + " wiederverwendet. Es wurden also "
+				+ (verticesGesamt - cached)
+				+ " unterschiedliche Vertices erzeugt.");
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

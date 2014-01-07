@@ -1,0 +1,5 @@
+package semantic.city.builder.prototype.enums;
+
+public enum subdivisionType {
+	HORIZONTAL, VERTICAL, UNKNOWN, DEEP
+}

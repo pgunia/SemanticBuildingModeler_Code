@@ -1,0 +1,486 @@
+package skeletonResult;
+
+import java.util.Iterator;
+
+import org.apache.log4j.Logger;
+
+
+import math.MyVector2f;
+import math.MyVector3f;
+import math.Plane;
+import math.Ray;
+import math.Vertex3d;
+
+/**
+ * 
+ * @author Patrick Gunia
+ * 
+ *         Ein ResultQuad ist ein viereckiges Element, das sowohl rechteckig,
+ *         als auch ein Parallelogramm sein kann und dass ein Faceelement eines
+ *         Results speichert. Die Vertices sind im Uhrzeigersinn definiert,
+ *         beginnend mit dem Startvertex der unteren Kante mit Index 0,
+ *         nachfolgende Endvertex untere Kante mit Index1 etc.
+ * 
+ * 
+ */
+
+public class ResultQuad extends AbstractResultElement {
+
+	/** Logger */
+	protected static Logger logger = Logger.getLogger("weightedstraightskeleton.skeletonresult.resultquad");
+
+	/**
+	 * Positionsaenderung von Vertex3 bzgl. Vertex0 auf der x-Achse (bezogen auf
+	 * lokales, face-orientiertes Koordinatensystem)
+	 */
+	private float mDeltaX3;
+
+	/**
+	 * Positionsaenderung von Vertex2 bzgl. Vertex1 auf der x-Achse (bezogen auf
+	 * lokales, face-orientiertes Koordinatensystem)
+	 */
+	private float mDeltaX2;
+
+	/** Flag haelt fest, ob es sich bei dem Trapez um ein Parallelogramm handelt */
+	private boolean mIsParallelogramm = false;
+
+	/**
+	 * falls es sich um ein Parallelogramm handelt, speichert dieses Flag, in
+	 * welche Richtung es geneigt ist
+	 */
+	private boolean mSlopedToStart = false;
+
+	/**
+	 * Flag wird gesetzt, falls der Sonderfall auftritt, bei dem die obere Kante
+	 * breiter ist, als die untere => dies kann nur bei Trapezen auftreten,
+	 * somit muss auchnur in diesem Fall eine Sonderfallbehandlung erfolgen
+	 */
+	private boolean mExceptionCase = false;
+
+	public ResultQuad() {
+		super();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public int getNumberOfPoints() {
+		return 4;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+
+		return "ResultQuad";
+	}
+
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode befuellt die HashMap mit Texturkoordinaten fuer die
+	 * Vertexindices. Vertices liegen immer im Uhrzeigersinn vor, beginnend mit
+	 * start, end, endChild, endStart. Berechnet werden die Koordinaten
+	 * basierend auf den berechneten Ausdehnungen des Trapez unter
+	 * Beruecksichtigung der uebergebenen Hoehen- und Breitenangaben der Textur.
+	 * 
+	 * @param width
+	 *            Breite der Textur in Pixeln
+	 * @param height
+	 *            Hoehe der Textur in Pixeln
+	 */
+	@Override
+	protected void createTextureCoords(float width, float height) {
+		mTextureCoords.clear();
+
+		float widthScaleFactor, heightScaleFactor, widthProportion, heightProportion, scaleFactor = 1;
+		float offset = 0.0f;
+
+		if (hasLeftNeighbour()) {
+			offset = getLeftNeighbour().getTextureOffsetMaxU();
+		}
+		else if (hasLowerNeighbour()) {
+			offset = getLowerNeighbour().getTextureOffset();
+
+		}
+		/*
+		System.out.println("Texturausdehnungen: Breite: " + width + " Hoehe: "
+				+ height + " Offset: " + offset);
+		System.out.println("Faceelement: Breite: " + mWidthLowerEdge
+				+ " Hoehe: " + mHeight);
+		*/
+		// Verhaeltnis von Texturhoehe zu Elementhoehe => wie oft passt das Element in der Hoehendimension in die Textur
+		heightProportion = height / mHeight;
+
+		// Verhaeltnis von Elementhoehe zur Texturhoehe
+		heightScaleFactor = mHeight / height;
+
+		// offset = 0;
+		
+		// Trapezfall
+		if (!mIsParallelogramm) {
+			// System.out.println("Trapezfall");
+			// offset = 0;
+			// wie oft kann die Textur in der Breite bzgl. der unteren Kante
+			// gemappt werden
+			widthScaleFactor = mWidthLowerEdge / width;
+
+			// wie oft passt das Element in der Breite in die Textur
+			// widthProportion = width / (mWidthLowerEdge + offset * width);
+			
+			scaleFactor = -1;
+			// mExceptionCase = false;
+			// handelt es sich um ein Trapez, bei dem die obere Kante kuerzer
+			// ist, als die untere (Regelfall)?
+			if (!mExceptionCase) {
+				// System.out.println("Standardfall");
+				// untere Kante
+				// rechtes Vertex
+				mTextureCoords.put(0, new MyVector2f(widthScaleFactor + offset,
+						heightScaleFactor));
+
+				// linkes Vertex
+				mTextureCoords
+						.put(1, new MyVector2f(offset, heightScaleFactor));
+
+				// obere Kante
+				// linkes Vertex
+				mTextureCoords.put(2, new MyVector2f((mDeltaX2 / width)
+						+ offset, 0.0f));
+				
+				// rechtes Vertex
+				mTextureCoords.put(3, new MyVector2f(
+						(widthScaleFactor - mDeltaX3 / width) + offset, 0.0f));
+
+				// der Offset bestimmt sich immer aus der u-Koordinate des
+				// Vertex, an dem das darueberliegende Face ansetzt
+				// bei Trapezen ist dies immer Vertex mit Index 2
+				mTextureOffsetULeft = mDeltaX2 / width + offset;
+				mTextureOffsetURight = mWidthLowerEdge / width + offset;
+			}
+			// oder ist der Ausnahmefall aufgetreten?
+			else {
+				// untere Kante
+				// rechtes Vertex
+				mTextureCoords.put(0, new MyVector2f(
+						(mWidthLowerEdge + mDeltaX2) / width + offset,
+						heightScaleFactor));
+
+				// linkes Vertex
+				mTextureCoords.put(1, new MyVector2f(mDeltaX2 / width + offset,
+						heightScaleFactor));
+
+				// obere Kante
+				// linkes Vertex
+				mTextureCoords.put(2, new MyVector2f(offset, 0.0f));
+				// rechtes Vertex
+
+				mTextureCoords.put(3, new MyVector2f(mWidthUpperEdge / width
+						+ offset, 0.0f));
+
+				// tritt der Sonderfall auf, so aendert sich der Offset nicht,
+				// da der Ansatzpunkt des naechsten
+				// Elements bzgl. des UV-Raumes unveraendert bleibt
+				mTextureOffsetULeft = offset;
+				mTextureOffsetURight = mWidthUpperEdge / width + offset;
+			}
+
+			// beim Trapezfall ist die Verhaeltnisbestimmung einfacher als beim
+			// Parallelogramm, man nimmt die laengere Kante
+			// beruecksichtige bei der Berechnung den Offset => wenn man das nicht tut, kann es dazu kommen, dass die Skalierung des Texturraum sprengt
+			// offset * texturbreite ist die Uebersetzung der Offset-Ausdehnung in absolute Werte, die auf die Breite des Elements addiert werden muessen
+			if (mWidthUpperEdge > mWidthLowerEdge) {
+				widthProportion = width / (mWidthUpperEdge + offset * width);
+			} else {
+				widthProportion = width / (mWidthLowerEdge + offset * width);
+			}
+
+		}
+		// Parallelogramm-Fall (deckt auch entartete Parallelogramme ab, bei
+		// denen obere und untere Kante unterschiedlich lang sind)
+		else {
+			// System.out.println("Parallelogrammfall");
+			// berechne die Verhaeltnisse fuer den Parallelogrammfall anders,
+			// bei der Breite muss das "Ueberragen" beruecksichtigt
+			// werden, sonst kann es vorkommen, dass die Texturkoordinaten den
+			// Raum sprengen
+
+			// Parallelogramm ist zum Vertex mit Index 0 geneigt
+			if (mSlopedToStart) {
+				// System.out.println("Neigung zu Vertex 0");
+				mTextureCoords.put(0, new MyVector2f(mWidthLowerEdge / width
+						+ offset, heightScaleFactor));
+				mTextureCoords
+						.put(1, new MyVector2f(offset, heightScaleFactor));
+				mTextureCoords.put(2, new MyVector2f((mDeltaX2 / width)
+						+ offset, 0.0f));
+				mTextureCoords.put(3, new MyVector2f(
+						(mWidthUpperEdge + mDeltaX2) / width + offset, 0.0f));
+
+				mTextureOffsetULeft = mDeltaX2 / width + offset;
+				mTextureOffsetURight = (mWidthUpperEdge + mDeltaX2) / width
+						+ offset;
+
+			}
+			// Parallelogramm ist zum Vertex mit Index 1 geneigt
+			else {
+				// System.out.println("Neigung zu Vertex 1");
+
+				mTextureCoords.put(0, new MyVector2f(
+						(mWidthLowerEdge + mDeltaX2) / width + offset,
+						heightScaleFactor));
+				mTextureCoords.put(1, new MyVector2f((mDeltaX2 / width)
+						+ offset, heightScaleFactor));
+				mTextureCoords.put(2, new MyVector2f(offset, 0.0f));
+				mTextureCoords.put(3, new MyVector2f(mWidthUpperEdge / width
+						+ offset, 0.0f));
+
+				// in diesem Sonderfall ist der Eingabeoffset gleich dem
+				// Ausgabeoffset, da das Vertex im Texturraum keine zusaetzliche
+				// Verschiebung in der u-Dimension aufweist
+				mTextureOffsetULeft = offset;
+				mTextureOffsetURight = (mWidthLowerEdge + mDeltaX2) / width
+						+ offset;
+
+			}
+
+			// bestimme den Breitenproportionsfaktor
+			// aufgrund der Struktur des Parallelogramms (auch im entarteten
+			// Fall) gilt, dass die Lange je einer Kante mit einem der beiden
+			// Deltawerte
+			// gleich der Lange der anderen mit dem jeweils anderen Delta-Wert
+			// ist, man muss nur die Kombination bestimmen
+			float testLaenge = mWidthLowerEdge + mDeltaX2;
+			float testLaenge2 = mWidthUpperEdge + mDeltaX3;
+			if (testLaenge == testLaenge2) {
+				widthProportion = width / (testLaenge + offset * width);
+			} else {
+				testLaenge = mWidthLowerEdge + mDeltaX3;
+				widthProportion = width / (testLaenge + offset * width);
+			}
+
+		}
+
+		// verwende den kleineren der beiden Faktoren, damit die Koordinaten
+		// nicht aus dem Texturraum herauslaufen
+		if (widthProportion >= heightProportion) {
+			scaleFactor = heightProportion;
+			// System.out.println("Verwende HeightProportion: " + heightProportion);
+		}
+		else {
+			scaleFactor = widthProportion;
+			// System.out.println("Verwende WidthProportion: " + widthProportion);
+		}
+
+		// update den globalen Skalierungsfaktor
+		updateMinScaleFactor(scaleFactor);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	protected void doComputations() {
+		// Breite bezieht sich auf die untere Kante des Trapez
+		Vertex3d vert0 = mPoints.get(0);
+		Vertex3d vert1 = mPoints.get(1);
+		Vertex3d vert2 = mPoints.get(2);
+		Vertex3d vert3 = mPoints.get(3);
+				
+		/*
+		System.out
+				.println("Starte Berechnung der Texturkoordinaten fuer Quad-Face mit: untenStart: "
+						+ vert0.getPositionPtr()
+						+ " untenEnd: "
+						+ vert1.getPositionPtr()
+						+ " obenEnd: "
+						+ vert2.getPositionPtr()
+						+ " obenStart: "
+						+ vert3.getPositionPtr());
+		*/
+		MyVector3f direction = new MyVector3f();
+		direction.sub(vert1.getPosition(), vert0.getPosition());
+		mWidthLowerEdge = direction.length();
+		Ray lowerEdge = new Ray(vert0.getPosition(), direction);
+
+		// berechne die Normale des Faces
+		MyVector3f direction2 = new MyVector3f();
+		direction2.sub(vert2.getPosition(), vert0.getPosition());
+		mNormal = new MyVector3f();
+		mNormal.cross(direction, direction2);
+		mNormal.normalize();
+
+		
+		// Berechne eine Ebene, die das Face beschreibt und teste, ob alle Punkte in dieser Ebene liegen
+		// durch Rundungsfehler kann der Fall auftreten, dass nicht alle Punkte auf der Ebene liegen
+		// allerdings ist dies nicht zwingend der Fall! Verzichte zunaechst auf die Assertion
+		// Plane plane = new Plane(mNormal, vert0.getPosition());
+		// for(int i = 0; i < mPoints.size(); i++) assert mMathHelper.isPointOnPlane(mPoints.get(i).getPosition(), plane): "FEHLER: Punkt " + i + ": " + mPoints.get(i) + " liegt nicht auf der Ebene des ResultQuads, dadurch wird das Quad nicht texturiert";
+		
+		
+		// berechne die Delta-Werte
+		// bestimme Schnittpunkte einer zur Grundlinie senkrechten Kante durch
+		// die oberen Vertices mit der Grundlinie
+		// bestimme die Richtung des Strahls durch Rotation der oberen Kante um
+		// 90°
+		MyVector3f upperEdge = new MyVector3f();
+
+		// Bestimme Richtung und Laenge der oberen Kante
+		upperEdge.sub(vert2.getPosition(), vert3.getPosition());
+		mWidthUpperEdge = upperEdge.length();
+
+		MyVector3f rayDirection = mMathHelper.calculateRotatedVectorRadians(mNormal,
+				upperEdge, Math.PI / 2.0d);
+		rayDirection.normalize();
+
+
+		Ray startRay = new Ray(vert3.getPosition(), rayDirection);
+		Ray endRay = new Ray(vert2.getPosition(), rayDirection);
+
+		// berechne Schnittpunkte		
+		// hier muss es nach Konstruktion einen Schnittpunkt geben...verwende einen angenaeherten, falls kein direktes Ergebnis kommt
+		float maxAcceptableDistance = 3.0f;
+		MyVector3f schnittpunktX3 = mMathHelper
+				.calculateRay2RayIntersectionApproximation(startRay, lowerEdge, maxAcceptableDistance);
+		
+		MyVector3f schnittpunktX2 = mMathHelper
+				.calculateRay2RayIntersectionApproximation(endRay, lowerEdge, maxAcceptableDistance);
+		
+		String message = "Es konnten keine Schnittpunkte mit der Grundkante ermittelt werden, SchnittpunktX3: " + schnittpunktX3 + " SchnittpunktX2: " + schnittpunktX2 + " Strahlen X3: Strahl1: " + startRay + " Strahl2: " + lowerEdge + " Strahlen X2: Strahl1: " + endRay + " Strahl2: " + lowerEdge;
+			
+		assert schnittpunktX3 != null && schnittpunktX2 != null : message;
+
+		// teste, ob sich beide Schnittpunkte auf dem Liniensegment der unteren
+		// Kante befinden
+		boolean endPointOnSegment = mMathHelper.isPointOnLineSegment(
+				schnittpunktX2, lowerEdge);
+		boolean startPointOnSegment = mMathHelper.isPointOnLineSegment(
+				schnittpunktX3, lowerEdge);
+
+		// Hoehe des Trapez bestimmen => Abstand zwischen den Endpunkten der
+		// senkrechten Kante
+		mHeight = mMathHelper.calculatePointPointDistance(startRay.getStart(),
+				schnittpunktX3);
+
+		// berechne die Delta-Werte
+		mDeltaX3 = mMathHelper.calculatePointPointDistance(schnittpunktX3,
+				vert0.getPosition());
+		mDeltaX2 = mMathHelper.calculatePointPointDistance(schnittpunktX2,
+				vert1.getPosition());
+
+		// berechne die Abstaende der Schnittpunkte von den Vertices
+		float distX2ToVert0 = mMathHelper.calculatePointPointDistance(
+				schnittpunktX2, vert0.getPosition());
+		float distX3ToVert0 = mMathHelper.calculatePointPointDistance(
+				schnittpunktX3, vert0.getPosition());
+		float distX2ToVert1 = mMathHelper.calculatePointPointDistance(
+				schnittpunktX2, vert1.getPosition());
+		float distX3ToVert1 = mMathHelper.calculatePointPointDistance(
+				schnittpunktX3, vert1.getPosition());
+
+		// setze nun die Flags abhaengig von der Struktur des Quads
+		// koennte wahrscheinlich kuerzer gemacht werden, ist so aber
+		// offensichtlicher
+		// wenn beide Schnittpunkte auf der unteren Kante liegen, hat man ein
+		// "regulaeres" Trapez
+		if (endPointOnSegment && startPointOnSegment) {
+			// System.out.println("Regulaeres Trapez");
+			mIsParallelogramm = false;
+			mExceptionCase = false;
+		}
+
+		// wenn beide Schnittpunkte nicht auf dem unteren Segment liegen, kann
+		// es sowohl ein gedrehtes Trapez
+		// als auch ein extrem verzerrtes Parallelogramm sein
+		else if (!endPointOnSegment && !startPointOnSegment) {
+
+			// es handelt sich um ein verzerrtes Parallelogramm, wenn beide
+			// Schnittpunkte bzgl. der Vertices auf der gleichen Seite
+			// liegen, also bsw. beide Schnittpunkte rechts von Vert0 oder links
+			// von Vert1
+			if ((distX2ToVert0 < distX2ToVert1)
+					&& (distX3ToVert0 < distX3ToVert1)) {
+				// System.out.println("Degeneriertes Paralleogramm mit Neigung zu Vert 0");
+				// verzerrtes Parallelogramm mit Neigung zu Vert0
+				mIsParallelogramm = true;
+				mExceptionCase = false;
+				mSlopedToStart = true;
+			} else if ((distX2ToVert0 > distX2ToVert1)
+					&& (distX3ToVert0 > distX3ToVert1)) {
+				//System.out.println("Degeneriertes Paralleogramm mit Neigung zu Vert 1");
+				// verzerrtes Parallelogramm mit Neigung zu Vert 1
+				mIsParallelogramm = true;
+				mExceptionCase = false;
+				mSlopedToStart = false;
+			}
+			// es handelt sich um ein gedrehtes Trapez
+			else {
+				// System.out.println("Gedrehtes Trapez");
+				mIsParallelogramm = false;
+				mExceptionCase = true;
+			}
+		} else if (endPointOnSegment) {
+			// regulaeres Parallelogramm mit Neigung zu Vert 0
+			// System.out.println("Parallelogramm mit Neigung zu Vert 0");
+			mIsParallelogramm = true;
+			mExceptionCase = false;
+			mSlopedToStart = true;
+		} else if (startPointOnSegment) {
+			// regulaeres Parallelogramm mit Neigung zu Vert 1
+			// System.out.println("Parallelogramm mit Neigung zu Vert 1");
+			mIsParallelogramm = true;
+			mExceptionCase = false;
+			mSlopedToStart = false;
+		} else
+			assert false : "Nicht beruecksichtiger Sonderfall bzgl. der Elementausrichtung";
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet, ob alle vier Punkte des Quads in der gleichen Ebene liegen. Ist dies nicht der Fall, versucht man, den 
+	 * Ausreisser in die errechnete Ebene zu projizieren.
+	 * @deprecated
+	 */
+	@Deprecated
+	@Override
+	public boolean validatePlane() {
+		assert mPoints.size() > 2: "FEHLER: Die Anzahl der gesetzten Punkte " + mPoints.size() + " ist zu niedrig!";
+		Vertex3d vert0 = mPoints.get(0);
+		Vertex3d vert1 = mPoints.get(1);
+		Vertex3d vert3 = mPoints.get(3);
+		
+		MyVector3f vert01 = new MyVector3f();
+		vert01.sub(vert1.getPosition(), vert0.getPosition());
+		
+		MyVector3f vert02 = new MyVector3f();
+		vert02.sub(vert3.getPosition(), vert0.getPosition());
+		
+		MyVector3f normal = new MyVector3f();
+		normal.cross(vert01, vert02);
+		normal.normalize();
+		
+		Plane testPlane = new Plane(normal, vert0.getPosition());
+		
+		// validiere nun, dass alle Punkte auf der Ebene liegen
+		Iterator<Vertex3d> pointIter = mPoints.iterator();
+		Vertex3d currentPoint = null;
+		
+		int index = 0;
+		
+		while(pointIter.hasNext()) {
+			currentPoint = pointIter.next();
+			if(!mMathHelper.isPointOnPlane(currentPoint.getPosition(), testPlane)) {
+				mMathHelper.projectPointOntoPlane(testPlane, currentPoint);
+				assert mMathHelper.isPointOnPlane(currentPoint.getPosition(), testPlane): "FEHLER: Punkt " + currentPoint + " befindet sich auch nach der Modifikation nicht auf der Zielebene!";
+			}
+			index++;
+		}
+		
+		
+		return true;
+		
+		
+	}
+	// ------------------------------------------------------------------------------------------
+	
+
+}

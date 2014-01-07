@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE log4j:configuration SYSTEM "log4j.dtd">
+
+<log4j:configuration xmlns:log4j="http://jakarta.apache.org/log4j/">
+ 
+    <appender name="CONSOLE" class="org.apache.log4j.ConsoleAppender">
+        <layout class="org.apache.log4j.PatternLayout">
+            <param name="ConversionPattern"
+                value="%p - %C{1}.%M(%L) | %m%n"/>
+        </layout>
+    </appender>
+
+    <appender name="FILE" class="org.apache.log4j.FileAppender">
+    	<!-- Datei vor jedem Start leeren  -->
+    	<param name="append" value="false" />
+		<param name="File" value="ressource/logging.log" />
+        <layout class="org.apache.log4j.PatternLayout">
+            <param name="ConversionPattern"
+           		value="%d{dd MMM yyyy HH:mm:ss} %p - %C{1}.%M(%L) | %m%n"/>
+        </layout>
+    </appender>
+
+	<logger name="math" >
+		<level value="INFO" />
+	</logger>
+
+	<logger name="semantic.city.builder.configurationservice">
+		<level value="WARN"/>
+	</logger>
+
+	<logger name="semantic.city.builder.math">
+		 <level value="WARN"/>
+	</logger>
+	
+	<logger name="semantic.city.builder.prototype.controller">
+		 <level value="WARN"/>
+	</logger>
+	
+	<logger name="semantic.city.builder.prototype.graphics">
+		 <level value="WARN"/>
+	</logger>
+	
+	<logger name="semantic.city.builder.prototype.city">
+		 <level value="WARN"/>
+	</logger>
+	
+	<logger name="semantic.city.builder.prototype.graphics.primitives">
+		 <level value="WARN"/>
+	</logger>
+	
+	<logger name="semantic.city.builder.prototype.configuration">
+		<level value="WARN" />
+	</logger>
+	
+	<logger name="semantic.city.builder.prototype.graphics.complex">
+		 <level value="WARN"/>
+	</logger>
+	
+	<logger name="semantic.city.builder.prototype.exception">
+		 <level value="ERROR"/>
+	</logger>
+	
+	<logger name="semantic.city.builder.prototype.algorithm">
+		<level value="WARN" />
+	</logger>
+	
+	<logger name="semantic.city.builder.prototype.service">
+		<level value="WARN" />
+	</logger>
+	
+	<logger name="semantic.city.builder.objectplacement.controller">
+		<level value="WARN" />
+	</logger>
+	
+	<logger name="semantic.city.builder.prototype.exporter">
+		<level value="WARN" />
+	</logger>
+	
+	<logger name="semantic.city.builder.prototype.importer">
+		<level value="WARN" />
+	</logger>
+
+	<logger name="semantic.city.builder.weightedstraightskeleton.algorithm">
+		<level value="WARN" />
+	</logger>
+	
+	<logger name="semantic.city.builder.weightedstraightskeleton.skeleton.result">
+		<level value="WARN" />
+	</logger>
+
+	<logger name="semantic.city.builder.weightedstraightskeleton.controller">
+		<level value="WARN" />
+	</logger>
+	
+	<logger name="semantic.city.builder.tesselation">
+		 <level value="WARN" />
+	</logger>
+	
+	<logger name="semantic.city.builder.prototype.building">
+		<level value="WARN" />
+	</logger>
+	
+	<logger name="semantic.city.builder.modelsynthesis">
+		<level value="WARN"/>
+	</logger>
+	
+	
+    <root>
+        <level value="ERROR"/>
+        <appender-ref ref="FILE"/>
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</log4j:configuration>

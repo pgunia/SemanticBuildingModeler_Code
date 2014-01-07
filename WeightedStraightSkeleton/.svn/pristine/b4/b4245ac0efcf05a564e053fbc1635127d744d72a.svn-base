@@ -1,0 +1,148 @@
+package semantic.city.builder.weightedstraightskeleton.algorithm;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import semantic.city.builder.math.MyVector3f;
+
+/**
+ * 
+ * @author Patrick Gunia
+ * 
+ *         Klasse dient der Verwaltung von Vertex-Events waehrend der
+ *         Verarbeitung. Im Gegesatz zu anderen Event-Klassen kann sie mehrere
+ *         Vertices aufnehmen, da ein Vertex-Event mindestens zwei
+ *         Eltern-Vertices besitzt.
+ * 
+ */
+
+public class VertexEvent extends IntersectionEvent {
+
+	/** Vektor mit saemtlichen Vertices, die am Event beteiligt sind (sollten genau 2 sein)*/
+	private List<SkeletonVertex> mEventVertices = null;
+	
+	/** Flag, das angibt, ob fuer den Event Kinder erzeugt und Nachbarschaftsupdates durchgefuehrt werden sollen*/
+	private boolean mProcess = true;
+
+	/**
+	 * @param mVertex
+	 * @param mSchnittpunkt
+	 * @param mDistance
+	 * @param secondVertex
+	 */
+	public VertexEvent(SkeletonVertex mVertex, MyVector3f mSchnittpunkt,
+			float mDistance, SkeletonVertex secondVertex) {
+		super(mVertex, mSchnittpunkt, mDistance, secondVertex);
+		mEventVertices = new ArrayList<SkeletonVertex>();
+		mEventVertices.add(mVertex);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "VertexEvent";
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Fuegt Vertices zum EventVertex-Buffer des Events hinzu
+	 * 
+	 * @param vertex
+	 */
+
+	public void addEventVertex(SkeletonVertex vertex) {
+		if (mEventVertices.indexOf(vertex) == -1)
+			mEventVertices.add(vertex);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @return Liefert saemtliche Vertices, die an diesem Event beteiligt sind
+	 */
+	public List<SkeletonVertex> getEventVertices() {
+		return mEventVertices;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String toString() {
+
+		StringBuffer result = new StringBuffer(getType() + ": EventVertices: ");
+
+		for (int i = 0; i < mEventVertices.size(); i++) {
+			result.append(i + ": " + mEventVertices.get(i).getPositionPtr());
+		}
+
+		result.append(", Schnittpunkt: " + getSchnittpunktPtr() + ", Distanz: "
+				+ getDistance());
+		
+		for(int i = 0; i < mTestplaneVertices.size(); i++) {
+			result.append(" NachbarVertex " + i + ": " + mTestplaneVertices.get(i));
+		}
+		result.append(mLineBreak);
+		return result.toString();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = super.hashCode();
+		result = prime * result
+				+ ((mEventVertices == null) ? 0 : mEventVertices.hashCode());
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (!super.equals(obj))
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		VertexEvent other = (VertexEvent) obj;
+		if (mEventVertices == null) {
+			if (other.mEventVertices != null)
+				return false;
+		} else if (!mEventVertices.equals(other.mEventVertices))
+			return false;
+		return true;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Fuegt dem Vektor mit den Vertices die Ausgangspunkt der
+	 * Schnittpunktbestimmung sind, ein weiteres Vertex dazu. Befindet sich ein
+	 * Vertex in diesem Vektor, so bedeutet dies, dass zwischen den zwei
+	 * adjazenten Ebenen am Eventvertex und der adjazenmten Ebene der Kante 0 ein
+	 * Schnitt berechnet wurde.
+	 */
+	public void addTestPlaneVertex(SkeletonVertex vertex) {
+		mTestplaneVertices.add(vertex);
+	}
+	// ------------------------------------------------------------------------------------------
+	public List<SkeletonVertex> getTestplaneVertices() {
+		return mTestplaneVertices;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public boolean isToProcess() {
+		return mProcess;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public void setToProcess(boolean mProcess) {
+		this.mProcess = mProcess;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+}

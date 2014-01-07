@@ -1,0 +1,885 @@
+package semantic.city.builder.prototype.graphics.complex;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import javax.media.opengl.GL;
+
+import org.apache.log4j.Logger;
+
+import processing.core.PApplet;
+import processing.core.PConstants;
+import semantic.city.builder.math.MyPolygon;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.MyVectormath;
+import semantic.city.builder.math.Vertex3d;
+import semantic.city.builder.prototype.service.PrototypeHelper;
+
+/**
+ * Abstrakte Basisklasse fuer Bounding-Boxes
+ * 
+ * @author Patrick Gunia
+ */
+
+abstract public class BoundingBox {
+
+	/** Logging-Instanz */
+	protected static Logger LOGGER = Logger.getLogger(BoundingBox.class);
+
+	/** Eckpunkte der Bounding Box */
+	protected List<Vertex3d> mVertices = null;
+
+	/** Seitenflaechen der Bounding Box */
+	protected List<MyPolygon> mFaces = null;
+
+	/** Achsen der Bounding Box */
+	protected List<MyVector3f> mAxes = null;
+
+	/** Mittelpunkt der Bounding Box */
+	protected MyVector3f mCenter = null;
+
+	/** Volumen */
+	protected Float mVolume = null;
+
+	/**
+	 * Ausdehnungen der Bounding Box, Reihenfolge der Ausdehnungen entspricht
+	 * der Abfolge der Achsen Bei AABBs, 0: Hoehe (y-Achse), 1: Laenge
+	 * (x-Achse), 2: Breite (z-Achse), bei OBBs werden die Dimensionen genauso
+	 * interpretiert, da es keine andere Option gibt
+	 */
+	protected Map<Integer, Float> mDimensions = null;
+
+	/** Update-Routine nach Transformationen o.a. */
+	abstract void update();
+
+	// ------------------------------------------------------------------------------------------
+	/** Leerer Default-Konstruktor */
+	public BoundingBox() {
+		init();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/** Init-Routine zur Initialisierung der Member */
+	protected void init() {
+		mVertices = new ArrayList<Vertex3d>();
+		mFaces = new ArrayList<MyPolygon>();
+		mAxes = new ArrayList<MyVector3f>(3);
+		mDimensions = new HashMap<Integer, Float>(3);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/** Height-Getter */
+	public Float getHeight() {
+		return mDimensions.get(0);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/** Height-Setter */
+	public void setHeight(Float height) {
+		mDimensions.put(0, height);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/** Width-Getter */
+	public Float getWidth() {
+		return mDimensions.get(2);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/** Width-Setter */
+	public void setWidth(Float width) {
+		mDimensions.put(2, width);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/** Length-Getter */
+	public Float getLength() {
+		return mDimensions.get(1);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/** Length-Setter */
+	public void setLength(Float length) {
+		mDimensions.put(1, length);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @return the mCenter
+	 */
+	public MyVector3f getCenter() {
+		return mCenter;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @param mCenter
+	 *            the mCenter to set
+	 */
+	public void setCenter(MyVector3f mCenter) {
+		this.mCenter = mCenter;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mVolume
+	 */
+	public Float getVolume() {
+		if (mVolume == null)
+			mVolume = computeVolume();
+		return mVolume;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet das Volumen der Boundingbox
+	 * 
+	 * @return Volumen des Huellquaders
+	 */
+	protected float computeVolume() {
+		return getWidth() * getHeight() * getLength();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @return the mVertices
+	 */
+	public List<Vertex3d> getVertices() {
+		return mVertices;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode berechnet aufgrund der OBB-Achsen und -Ausdehnungen den
+	 * Mittelpunkt der OBB
+	 * 
+	 * @param extremwerte
+	 */
+	protected void computeCenter(List<Float> extremwerte) {
+
+		Float firstAxisDimension = extremwerte.get(1) - extremwerte.get(0);
+		Float secondAxisDimension = extremwerte.get(3) - extremwerte.get(2);
+		Float thirdAxisDimension = extremwerte.get(5) - extremwerte.get(4);
+
+		mDimensions = new HashMap<Integer, Float>(3);
+		mDimensions.put(0, firstAxisDimension);
+		mDimensions.put(1, secondAxisDimension);
+		mDimensions.put(2, thirdAxisDimension);
+
+		mVolume = Math.abs(firstAxisDimension * secondAxisDimension
+				* thirdAxisDimension);
+		LOGGER.trace("Volume Bound: " + mVolume);
+
+		// Mittelpunkt der OBB berechnen
+		MyVector3f firstAxis = mAxes.get(0).clone();
+		firstAxis.scale(0.5f * (extremwerte.get(0) + extremwerte.get(1)));
+
+		MyVector3f secondAxis = mAxes.get(1).clone();
+		secondAxis.scale(0.5f * (extremwerte.get(2) + extremwerte.get(3)));
+
+		MyVector3f thirdAxis = mAxes.get(2).clone();
+		thirdAxis.scale(0.5f * (extremwerte.get(4) + extremwerte.get(5)));
+
+		mCenter = new MyVector3f();
+		mCenter.add(firstAxis, secondAxis);
+		mCenter.add(thirdAxis);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode berechnet die BB als Menge von Polygonflaechen basierend auf den
+	 * Koordinatenachsen, den Dimensionen und dem Mittelpunkt
+	 * 
+	 */
+	public void computePolygons() {
+
+		mVertices = new ArrayList<Vertex3d>(8);
+
+		// eigen0
+		MyVector3f axis0 = mAxes.get(0);
+		// eigen1
+		MyVector3f axis1 = mAxes.get(1);
+		// eigen2
+		MyVector3f axis2 = mAxes.get(2);
+
+		// berechne nun die 8 Eckpunkte der OBB basierend auf den Achsen,
+		// Extremwerten und dem Mittelpunkt
+		// gehe zunaechst in Richtung des Minimumwerts des ersten Eigenvektors
+		MyVector3f position = new MyVector3f();
+		MyVector3f translate = axis0.clone();
+		translate.scale(mDimensions.get(0) / 2);
+
+		// dieser Punkt liegt in der Mitte einer der Polygonflaechen
+		position.add(mCenter, translate);
+
+		// gehe auf die Polygonkante
+		translate = axis1.clone();
+		translate.scale(mDimensions.get(1) / 2);
+
+		// hier befindet man sich auf der Mitte einer der Polygonkanten, nun
+		// muss man in Richtung der Eckpunkte gehen
+		position.add(translate);
+		translate = axis2.clone();
+		translate.scale(mDimensions.get(2) / 2);
+
+		// 1. Punkt
+		position.add(translate);
+		mVertices.add(new Vertex3d(position.clone()));
+
+		// 2. Punkt
+		translate = axis1.clone();
+		translate.scale(-mDimensions.get(1));
+		position.add(translate);
+		mVertices.add(new Vertex3d(position.clone()));
+
+		// 3. Punkt
+		translate = axis2.clone();
+		translate.scale(-mDimensions.get(2));
+		position.add(translate);
+		mVertices.add(new Vertex3d(position.clone()));
+
+		// 4. Punkt
+		translate = axis1.clone();
+		translate.scale(mDimensions.get(1));
+		position.add(translate);
+		mVertices.add(new Vertex3d(position));
+
+		// die restlichen 4 Punkte entstehen durch Translation der ersten 4
+		// Punkte um den 1. Eigenvektor
+		translate = axis0.clone();
+		translate.scale(-mDimensions.get(0));
+
+		List<Vertex3d> secondObbVerts = new ArrayList<Vertex3d>(4);
+		for (int i = 0; i < mVertices.size(); i++) {
+			LOGGER.debug("Vert: " + i + ": " + mVertices.get(i));
+			position = mVertices.get(i).getPosition();
+			position.add(translate);
+			secondObbVerts.add(new Vertex3d(position));
+		}
+
+		// jetzt Polygone bauen
+		MyPolygon poly = new MyPolygon(mVertices);
+		mFaces = new ArrayList<MyPolygon>(6);
+		mFaces.add(poly);
+
+		poly = new MyPolygon(secondObbVerts);
+		mFaces.add(poly);
+
+		// Polygone mit den ersten / letzten beiden Vertices der Buffer
+		List<Vertex3d> verts = new ArrayList<Vertex3d>(4);
+		verts.add(mVertices.get(0));
+		verts.add(mVertices.get(1));
+		verts.add(secondObbVerts.get(1));
+		verts.add(secondObbVerts.get(0));
+		poly = new MyPolygon(verts);
+		mFaces.add(poly);
+
+		verts = new ArrayList<Vertex3d>(4);
+		verts.add(mVertices.get(2));
+		verts.add(mVertices.get(3));
+		verts.add(secondObbVerts.get(3));
+		verts.add(secondObbVerts.get(2));
+		poly = new MyPolygon(verts);
+		mFaces.add(poly);
+
+		verts = new ArrayList<Vertex3d>(4);
+		verts.add(mVertices.get(1));
+		verts.add(mVertices.get(2));
+		verts.add(secondObbVerts.get(2));
+		verts.add(secondObbVerts.get(1));
+		poly = new MyPolygon(verts);
+		mFaces.add(poly);
+
+		verts = new ArrayList<Vertex3d>(4);
+		verts.add(mVertices.get(0));
+		verts.add(mVertices.get(3));
+		verts.add(secondObbVerts.get(3));
+		verts.add(secondObbVerts.get(0));
+		poly = new MyPolygon(verts);
+		mFaces.add(poly);
+
+		// Vertices aus zweitem Vertexbuffer in Hauptbuffer kopieren
+		mVertices.addAll(secondObbVerts);
+
+		// fuer eine einheitliche Ausrichtung der Oberflaechennormalen sorgen
+		PrototypeHelper.getInstance().normalizeNormals(mFaces);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mDimensions
+	 */
+	protected Map<Integer, Float> getDimensions() {
+		return mDimensions;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mDimensions
+	 *            the mDimensions to set
+	 */
+	protected void setDimensions(Map<Integer, Float> mDimensions) {
+		this.mDimensions = mDimensions;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mOBBAxes
+	 */
+	/*
+	 * protected List<MyVector3f> getOBBAxes() { return mAxes; }
+	 */
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param axes
+	 *            the mOBBAxes to set
+	 */
+	protected void setAxes(List<MyVector3f> axes) {
+		this.mAxes = axes;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public BoundingBox clone() {
+
+		Class clazz = this.getClass();
+		LOGGER.trace("CLASS: " + clazz.toString());
+		BoundingBox clone;
+		try {
+
+			clone = (BoundingBox) clazz.newInstance();
+			clone.setCenter(mCenter.clone());
+
+			LOGGER.trace("MITTE QUELLE: " + mCenter + " ZIEL: "
+					+ clone.getCenter());
+
+			Map<Integer, Float> dimensions = new HashMap<Integer, Float>(
+					mDimensions.size());
+			for (int i = 0; i < mDimensions.size(); i++)
+				dimensions.put(i, mDimensions.get(i));
+			clone.setDimensions(dimensions);
+
+			List<MyVector3f> axis = new ArrayList<MyVector3f>(3);
+			for (int i = 0; i < mAxes.size(); i++)
+				axis.add(mAxes.get(i).clone());
+			clone.setAxes(axis);
+
+			// die restlichen Komponenten werden berechnet, nicht kopiert
+			clone.computePolygons();
+			return clone;
+
+		} catch (InstantiationException e) {
+			e.printStackTrace();
+		} catch (IllegalAccessException e) {
+			e.printStackTrace();
+		}
+
+		return null;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Draw-Methode fuer Processing-Draw-Context
+	 * 
+	 * @param context
+	 *            Drawingkontext in dem gezeichnet wird
+	 */
+	public void draw(PApplet context) {
+
+		// zeichne alle Polygone der OBB
+		MyPolygon currentPoly = null;
+		List<Vertex3d> polyPoints = null;
+		Vertex3d currentVertex = null;
+		MyVector3f vertPos = null;
+
+		for (int i = 0; i < mFaces.size(); i++) {
+			currentPoly = mFaces.get(i);
+			polyPoints = currentPoly.getVertices();
+			context.beginShape();
+			for (int k = 0; k < polyPoints.size(); k++) {
+				currentVertex = polyPoints.get(k);
+				vertPos = currentVertex.getPositionPtr();
+				context.vertex(vertPos.x, vertPos.y, vertPos.z);
+			}
+			context.endShape(PConstants.CLOSE);
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Draw-Methode fuer GL-Context
+	 * 
+	 * @param context
+	 *            Drawingkontext in dem gezeichnet wird
+	 */
+	public void drawGL(GL context) {
+		// zeichne alle Polygone der OBB
+		MyPolygon currentPoly = null;
+		List<Vertex3d> polyPoints = null;
+		Vertex3d currentVertex = null;
+		MyVector3f vertPos = null;
+
+		for (int i = 0; i < mFaces.size(); i++) {
+			currentPoly = mFaces.get(i);
+			polyPoints = currentPoly.getVertices();
+
+			context.glBegin(GL.GL_POLYGON);
+			context.glColor4f(100.0f, 100.0f, 100.0f, 100.0f);
+
+			for (int k = 0; k < polyPoints.size(); k++) {
+				currentVertex = polyPoints.get(k);
+				vertPos = currentVertex.getPositionPtr();
+				context.glVertex3f(vertPos.x, vertPos.y, vertPos.z);
+			}
+
+			context.glEnd();
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode testet, ob es sich bei dem zu positionierenden Objekt um ein
+	 * rotationssymmetrisches Objekt wie bsw. eine Saeule handelt. Der Test geht
+	 * dabei der Einfachheit halber davon aus, dass solche Objekte in 2 der 3
+	 * OBB-Dimensionen sehr aehnliche Ausdehnungen besitzen. Wenn dies der Fall
+	 * ist, wird das Objekt als symmetrisch betrachtet
+	 * 
+	 * @return True, falls 2 von 3 Dimensionen sehr aehnliche Ausdehnungen
+	 *         haben, False sonst
+	 */
+	public boolean isSymmetric() {
+
+		// sortiere die Dimensionen in einem neuen Container
+		PrototypeHelper helper = PrototypeHelper.getInstance();
+		MyVectormath mathHelper = MyVectormath.getInstance();
+
+		List<Float> sortedFloats = new ArrayList<Float>(3);
+		Set<Integer> keys = mDimensions.keySet();
+		Iterator<Integer> keyIter = keys.iterator();
+		while (keyIter.hasNext())
+			sortedFloats.add(mDimensions.get(keyIter.next()));
+
+		helper.sortFloats(sortedFloats);
+
+		// Differenz 0 zu 1
+		float diff = sortedFloats.get(0) - sortedFloats.get(1);
+		if (mathHelper.isWithinTolerance(diff, 0.0f, 0.1f))
+			return true;
+
+		// Differenz 1 zu 2
+		diff = sortedFloats.get(1) - sortedFloats.get(2);
+		if (mathHelper.isWithinTolerance(diff, 0.0f, 0.1f))
+			return true;
+		return false;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode verschiebt die vollstaendige BoundingBox um den uebergebenen
+	 * Vektor und fuehrt anschliessend Updates durch
+	 * 
+	 * @param translation
+	 *            Vektor, um den die OBB verschoben wird
+	 */
+	public void translate(MyVector3f translation) {
+
+		LOGGER.debug("Verschiebe OBB um Vektor: " + translation);
+
+		// Vertices verschieben
+		for (int i = 0; i < mVertices.size(); i++)
+			mVertices.get(i).getPositionPtr().add(translation);
+
+		// Mittelpunkt verschieben
+		mCenter.add(translation);
+
+		// Faces updaten
+		MyPolygon currentPoly = null;
+		for (int i = 0; i < mFaces.size(); i++) {
+			currentPoly = mFaces.get(i);
+
+			// aktualisiere das Poly mit den eigenen transformierten Vertices
+			// (ist erforderlich, da sich durch die Transformation alle Ebenen
+			// und Strahlen etc. geaendert haben)
+			currentPoly.update(currentPoly.getVertices());
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Skaliert die OBB um den uebergebenen Skalierungsfaktor
+	 * 
+	 * @param scalingFactor
+	 *            Skalierungsfaktor
+	 */
+	public void scale(Float scalingFactor) {
+
+		float value = 0;
+		// Dimensionen skalieren
+		for (int i = 0; i < mDimensions.size(); i++) {
+			value = mDimensions.get(i);
+			value *= scalingFactor;
+			mDimensions.put(i, value);
+		}
+
+		// Neuberechnung aufgrund skalierter Dimensionen
+		computePolygons();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mFaces
+	 */
+	public List<MyPolygon> getFaces() {
+		return mFaces;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * 
+	 * @return the mAxes
+	 */
+	public List<MyVector3f> getAxes() {
+		return mAxes;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet ein Rechteck basierend auf den uebergebenen Achsen. Je
+	 * nach Berechnungsablauf der Achsen handelt es sich dabei um ein minimales
+	 * Rechteck, dies muss aber nicht der Fall sein. Die Achsen definieren die
+	 * Ausrichtung, dabei geht die Methode davon aus, dass die uebergebenen
+	 * Vertices alle in einer Ebene liegen, so dass die Projektion auf die
+	 * uebergebenen Achsen in einer Ebene zu gleichen Extremwerten fuehrt. Diese
+	 * Dimension wird bei der Polygonberechnung ignoriert.
+	 * 
+	 * @param vertices
+	 * @return
+	 */
+	public void computeRect(List<Float> extremeValues) {
+
+		// da diese Berechnung aufgerufen wurde, muss es eine Extremwerte geben,
+		// die 0 sind (ausser bei AABB Achsen, da diese nicht aufgrund der
+		// Ausrichtung
+		// der Vertexwolke berechnet, sondern festgesetzt werden => hier kann es
+		// zu Fehlern kommen, wenn die Ebene, die die Vertices enthaelt, in
+		// ihrer Ausrichtung
+		// nicht einer der Koordinatenachsen entspricht => wuerde man die Achsen
+		// aber berechnen, so koennte man die Ausdehnungen nicht mehr
+		// interpretieren, wie bei AABBs
+		float u, l;
+		int i;
+		boolean validAssertion = false;
+		// finde 2 Extremwerte mit gleichem Wert
+		for (i = 0; i < extremeValues.size(); i += 2) {
+			u = extremeValues.get(i);
+			l = extremeValues.get(i + 1);
+			if (u == l) {
+				validAssertion = true;
+				break;
+			}
+		}
+
+		assert validAssertion : "FEHLER: Es konnte keine Dimension aus der Berechnung ausgeschlossen werden!";
+
+		// bestimme den Index der Achse, die geskippt wird basierend auf den
+		// gleichen Extremwert-Indices
+		int axisIndex = i / 2;
+
+		List<Vertex3d> polyVerts = new ArrayList<Vertex3d>(4);
+		Vertex3d currentVert = null;
+		MyVector3f currentProjectionFirst = null, currentProjectionSecond = null, position = null, ignorableAxis = null;
+		float ignorableAxisValue;
+
+		// erzeuge 4 Punkte aus den Extremwerten und den Achsen
+		switch (axisIndex) {
+		// Achse 0 wird ignoriert, diese Dimension existiert nicht
+		case 0:
+			ignorableAxisValue = extremeValues.get(0);
+			ignorableAxis = mAxes.get(0);
+			ignorableAxis.scale(ignorableAxisValue);
+
+			// 1. Punkt => alles Min
+			currentProjectionFirst = mAxes.get(1);
+			currentProjectionFirst.normalize();
+			// mit dem Min-Wert der 2. Achse skalieren
+			currentProjectionFirst.scale(extremeValues.get(3));
+
+			currentProjectionSecond = mAxes.get(2);
+			currentProjectionSecond.normalize();
+			// mit dem Min-Wert der 3. Achse skalieren
+			currentProjectionSecond.scale(extremeValues.get(5));
+
+			position = new MyVector3f();
+			position.add(ignorableAxis, currentProjectionFirst);
+			position.add(currentProjectionSecond);
+			currentVert = new Vertex3d(position);
+			polyVerts.add(currentVert);
+
+			// 2. Punkt 1. Dimension min, 2. max
+			currentProjectionSecond.normalize();
+			currentProjectionSecond.scale(extremeValues.get(4));
+			position = new MyVector3f();
+			position.add(ignorableAxis, currentProjectionFirst);
+			position.add(currentProjectionSecond);
+			currentVert = new Vertex3d(position);
+			polyVerts.add(currentVert);
+
+			// 3. Punkt 1. Dimension max, 2. max
+			currentProjectionFirst.normalize();
+			currentProjectionFirst.scale(extremeValues.get(2));
+			position = new MyVector3f();
+			position.add(ignorableAxis, currentProjectionFirst);
+			position.add(currentProjectionSecond);
+			currentVert = new Vertex3d(position);
+			polyVerts.add(currentVert);
+
+			// 4. Punkt 1. Dimension max, 2. min
+			currentProjectionSecond.normalize();
+			currentProjectionSecond.scale(extremeValues.get(5));
+			position = new MyVector3f();
+			position.add(ignorableAxis, currentProjectionFirst);
+			position.add(currentProjectionSecond);
+			currentVert = new Vertex3d(position);
+			polyVerts.add(currentVert);
+			break;
+
+		case 1:
+			ignorableAxisValue = extremeValues.get(2);
+			ignorableAxis = mAxes.get(1);
+			ignorableAxis.scale(ignorableAxisValue);
+
+			// 1. Punkt => alles Min
+			currentProjectionFirst = mAxes.get(0);
+			currentProjectionFirst.normalize();
+			currentProjectionFirst.scale(extremeValues.get(1));
+
+			currentProjectionSecond = mAxes.get(2);
+			currentProjectionSecond.normalize();
+			// mit dem Min-Wert der 3. Achse skalieren
+			currentProjectionSecond.scale(extremeValues.get(5));
+
+			position = new MyVector3f();
+			position.add(ignorableAxis, currentProjectionFirst);
+			position.add(currentProjectionSecond);
+			currentVert = new Vertex3d(position);
+			polyVerts.add(currentVert);
+
+			// 2. Punkt 1. Dimension min, 2. max
+			currentProjectionSecond.normalize();
+			currentProjectionSecond.scale(extremeValues.get(4));
+			position = new MyVector3f();
+			position.add(ignorableAxis, currentProjectionFirst);
+			position.add(currentProjectionSecond);
+			currentVert = new Vertex3d(position);
+			polyVerts.add(currentVert);
+
+			// 3. Punkt 1. Dimension max, 2. max
+			currentProjectionFirst.normalize();
+			currentProjectionFirst.scale(extremeValues.get(0));
+			position = new MyVector3f();
+			position.add(ignorableAxis, currentProjectionFirst);
+			position.add(currentProjectionSecond);
+			currentVert = new Vertex3d(position);
+			polyVerts.add(currentVert);
+
+			// 4. Punkt 1. Dimension max, 2. min
+			currentProjectionSecond.normalize();
+			currentProjectionSecond.scale(extremeValues.get(5));
+			position = new MyVector3f();
+			position.add(ignorableAxis, currentProjectionFirst);
+			position.add(currentProjectionSecond);
+			currentVert = new Vertex3d(position);
+			polyVerts.add(currentVert);
+			break;
+
+		case 2:
+			ignorableAxisValue = extremeValues.get(4);
+			ignorableAxis = mAxes.get(2);
+			ignorableAxis.scale(ignorableAxisValue);
+
+			// 1. Punkt => alles Min
+			currentProjectionFirst = mAxes.get(0);
+			currentProjectionFirst.normalize();
+			currentProjectionFirst.scale(extremeValues.get(1));
+
+			currentProjectionSecond = mAxes.get(1);
+			currentProjectionSecond.normalize();
+			// mit dem Min-Wert der 3. Achse skalieren
+			currentProjectionSecond.scale(extremeValues.get(3));
+
+			position = new MyVector3f();
+			position.add(ignorableAxis, currentProjectionFirst);
+			position.add(currentProjectionSecond);
+			currentVert = new Vertex3d(position);
+			polyVerts.add(currentVert);
+
+			// 2. Punkt 1. Dimension min, 2. max
+			currentProjectionSecond.normalize();
+			currentProjectionSecond.scale(extremeValues.get(2));
+			position = new MyVector3f();
+			position.add(ignorableAxis, currentProjectionFirst);
+			position.add(currentProjectionSecond);
+			currentVert = new Vertex3d(position);
+			polyVerts.add(currentVert);
+
+			// 3. Punkt 1. Dimension max, 2. max
+			currentProjectionFirst.normalize();
+			currentProjectionFirst.scale(extremeValues.get(0));
+			position = new MyVector3f();
+			position.add(ignorableAxis, currentProjectionFirst);
+			position.add(currentProjectionSecond);
+			currentVert = new Vertex3d(position);
+			polyVerts.add(currentVert);
+
+			// 4. Punkt 1. Dimension max, 2. min
+			currentProjectionSecond.normalize();
+			currentProjectionSecond.scale(extremeValues.get(3));
+			position = new MyVector3f();
+			position.add(ignorableAxis, currentProjectionFirst);
+			position.add(currentProjectionSecond);
+			currentVert = new Vertex3d(position);
+			polyVerts.add(currentVert);
+			break;
+
+		}
+
+		MyPolygon rect = new MyPolygon(polyVerts);
+		mFaces.add(rect);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet, ob sich die BoundingBoxes schneiden und verwendet
+	 * dafuer das Separating Axis Theorem (SAT). Beschrieben hier: Alan Watt:
+	 * 3D-Computergrafik S.569
+	 * 
+	 * @param other
+	 *            Boundingbox, die auf Ueberschneidung getestet wird
+	 * @return True, falls sich die Boundingboxen ueberschneiden, falls sonst
+	 *         ACHTUNG: UNGETESTET
+	 */
+	public boolean intersectsSAT(BoundingBox other) {
+
+		// bestimme die Achsen der beiden Boundingboxes, skaliert ueber die
+		// jeweils halbe Seitenlaenge
+		List<MyVector3f> axisBB1 = new ArrayList<MyVector3f>(mAxes.size());
+		List<MyVector3f> axisBB2 = new ArrayList<MyVector3f>(mAxes.size());
+
+		List<MyVector3f> baseAxisBB1 = getAxes();
+		List<MyVector3f> baseAxisBB2 = other.getAxes();
+
+		LOGGER.trace("#Dimensions1: " + mDimensions.size());
+
+		Set<Integer> keys = mDimensions.keySet();
+		Iterator<Integer> keyIter = keys.iterator();
+		while (keyIter.hasNext()) {
+			int key = keyIter.next();
+			LOGGER.error("KEY: " + key + " VALUE: " + mDimensions.get(key));
+		}
+
+		LOGGER.trace("#Dimensions2: " + other.getDimensions().size());
+		LOGGER.trace("#Achsen: " + mAxes.size());
+
+		// Kopien der Vektoren erzeugen und mit der halben Ausdehnung skalieren
+		// (s. Buch)
+		// aA Berechnungen
+		MyVector3f currentAxis = null;
+		for (int i = 0; i < mAxes.size(); i++) {
+			currentAxis = baseAxisBB1.get(i).clone();
+			assert currentAxis != null : "FEHLER: Achse ist null!";
+			currentAxis.scale(mDimensions.get(i) / 2.0f);
+			axisBB1.add(currentAxis);
+
+			currentAxis = baseAxisBB2.get(i).clone();
+			currentAxis.scale(other.getDimensions().get(i) / 2.0f);
+			axisBB2.add(currentAxis);
+		}
+
+		MyVector3f center2Center = new MyVector3f();
+		center2Center.sub(other.getCenter(), getCenter());
+
+		// erst die Achsen der Boundingboxen testen
+		for (int i = 0; i < axisBB1.size(); i++) {
+			if (!isSeparatingAxis(baseAxisBB1.get(i), axisBB1, axisBB2,
+					center2Center))
+				return true;
+			if (!isSeparatingAxis(baseAxisBB2.get(i), axisBB1, axisBB2,
+					center2Center))
+				return true;
+		}
+
+		// jetzt alle moeglichen Achsen testen, die senkrecht zu jeweils 2
+		// Kantenpaaren verlaufen
+		MyVector3f separatingAxis = null;
+		for (int i = 0; i < axisBB1.size(); i++) {
+			for (int j = 0; j < axisBB2.size(); j++) {
+				separatingAxis = new MyVector3f();
+				separatingAxis.cross(baseAxisBB1.get(i), baseAxisBB2.get(j));
+				if (!isSeparatingAxis(separatingAxis, axisBB1, axisBB2,
+						center2Center))
+					return true;
+			}
+		}
+
+		// alle getesteten Achsen separieren die Boxen voneinander, es liegt
+		// keine Uebsrschneidung vor
+		return false;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Prueft, ob die uebergebene Achse eine separierende Achse fuer die beiden
+	 * Bounding-Boxen ist.
+	 * 
+	 * @param axis
+	 *            Separierende Achse
+	 * @param axisBB1
+	 *            Bounding-Box-Achsen der 1. Box
+	 * @param axisBB2
+	 *            Bounding-Box-Achsen der 2. Box
+	 * @param center2Center
+	 *            Verbindungsvektor zwischen den Mittelpunkten der beiden
+	 *            Boundingboxen
+	 * @return True, falls es sich um eine separierende Achse handelt, False
+	 *         sonst
+	 */
+	private boolean isSeparatingAxis(MyVector3f axis, List<MyVector3f> axisBB1,
+			List<MyVector3f> axisBB2, MyVector3f center2Center) {
+
+		double separatingAxisProjectionValue = 0.0d;
+
+		// berechne die Projektionsbetraege der Achsenprojektionen auf die
+		// separierende Achse
+		for (int i = 0; i < axisBB1.size(); i++) {
+			separatingAxisProjectionValue += Math.abs(axis.dot(axisBB1.get(i)));
+			separatingAxisProjectionValue += Math.abs(axis.dot(axisBB2.get(i)));
+		}
+
+		if (Math.abs(center2Center.dot(axis)) > separatingAxisProjectionValue)
+			return true;
+		else
+			return false;
+	}
+	// ------------------------------------------------------------------------------------------
+}

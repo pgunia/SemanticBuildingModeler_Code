@@ -1,0 +1,365 @@
+package semantic.building.modeler.prototype.service;
+
+import java.io.File;
+import java.nio.IntBuffer;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+
+import javax.media.opengl.GL;
+
+import org.apache.log4j.Logger;
+
+import processing.core.PApplet;
+import processing.core.PImage;
+import processing.opengl.PGraphicsOpenGL;
+import semantic.building.modeler.configurationservice.model.SystemConfiguration;
+
+/**
+ * 
+ * @author Patrick Gunia Klasse zur Verwaltung saemtlicher verwendeter Texturen,
+ *         zustaendig fuer Skalierung etc. Singleton-Implementation
+ * 
+ */
+
+public class TextureManagement {
+
+	/** Logger */
+	protected static Logger LOGGER = Logger.getLogger(TextureManagement.class);
+
+	/** Instanz der Konfigurationsklasse fuer Texturen */
+	private SystemConfiguration mSystemConfig = null;
+
+	/** Enumeration fuer alle vorhandenen Kategorien von Texturen */
+
+	public enum TextureCategory {
+		Wall, Roof, Ground, Test;
+	}
+
+	/**
+	 * Referenz auf die PApplet-Klasse, wird fuer das Laden und skalieren der
+	 * Texturen benoetigt
+	 */
+	private PApplet mParent = null;
+
+	/** Singleton-Instanz */
+	private static TextureManagement mInstance = null;
+
+	/** Hashmap enthaelt Instanzen aller geladenen Texturen */
+	private Map<String, Texture> mTextures = null;
+
+	/** Speichert die Anzahl der Texturen pro Kategorie */
+	private Map<String, Integer> mCategoryTextureCount = null;
+
+	/** Maximale Ausdehnung in Hoehe oder Breite der verwendeten Textur */
+	private int mMaxTextureSize = 2048;
+
+	/** Limitiert die Anzahl der Skalierungen der Textur */
+	private int mMaxTextureScaleFactor = 4;
+
+	/** Flag definiert, ob OpenGL ueber Direktzugriffe auf die API genutzt wird */
+	private boolean mUseGL = false;
+
+	/** Wurde die Texturverwaltung bereits vollstaendig initialisiert? */
+	private boolean mInitialized = false;
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Privater Default-Konstruktor, laedt zunaechst alle Dateinamen, die im
+	 * Texture-Ressource-Folder liegen und sortiert sie anschliessend
+	 */
+	private TextureManagement() {
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode initialisiert die Texturverwaltung
+	 * 
+	 * @param sysConf
+	 *            Systemkonfiguration, die die erforderlichen Parameter enthaelt
+	 */
+	public void initializeTextureManagement(final PApplet applet,
+			final SystemConfiguration sysConf) {
+
+		mParent = applet;
+		mMaxTextureSize = sysConf.getMaxTextureSize();
+		mMaxTextureScaleFactor = sysConf.getMaxTextureScaleFactor();
+
+		// lese die kommagetrennten Kategorien aus der Config-Datei
+		final Map<String, List<String>> textureVector = new HashMap<String, List<String>>();
+		final Set<String> textureCategories = sysConf
+				.getSupportedTextureCategories();
+		for (String category : textureCategories) {
+			textureVector.put(category, new ArrayList<String>());
+		}
+
+		String absolutePathname = "";
+		String filename = "";
+
+		mCategoryTextureCount = new HashMap<String, Integer>();
+
+		final File textureFolder = new File(sysConf.getTextureFolder());
+		final File[] fileArray = textureFolder.listFiles();
+
+		mTextures = new HashMap<String, Texture>(fileArray.length);
+		int count;
+		Texture currentTexture = null;
+
+		for (File curFile : fileArray) {
+
+			filename = curFile.getName();
+			absolutePathname = curFile.getAbsolutePath();
+
+			// langsam, wird aber auch nur einmal gemacht...
+			for (String category : textureCategories) {
+				if (filename.contains(category)) {
+
+					// verwalte eine HashMap mit der Anzahl der Texturen pro
+					// Kategorie
+					Integer counter = mCategoryTextureCount.get(category);
+					if (counter == null) {
+						mCategoryTextureCount.put(category, 1);
+					} else {
+						counter++;
+						mCategoryTextureCount.put(category, counter);
+					}
+
+					count = textureVector.get(category).size();
+
+					// key bestehend aus Kategoriename und Index
+					String id = category + count;
+					currentTexture = new Texture(absolutePathname, id);
+					mTextures.put(id, currentTexture);
+					textureVector.get(category).add(absolutePathname);
+				}
+			}
+		}
+		mInitialized = true;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Singleton-Getter
+	 * 
+	 * @return Referenz auf die einzige Instanz dieser Klasse
+	 */
+	public static TextureManagement getInstance() {
+		if (mInstance == null) {
+			mInstance = new TextureManagement();
+		}
+		return mInstance;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public void setParent(PApplet parent) {
+		mParent = parent;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode loescht alle gespeicherten Daten der TextureManagement-Instanz
+	 */
+	public void reset() {
+		for (Texture texture : mTextures.values()) {
+			texture.unload();
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Liefert Texturen basierend auf den vorhandenen Kategorien. Hierbei werden
+	 * die Texturen zufallsbasiert aus einer Menge von Texturen und liefert
+	 * diese zurueck.
+	 * 
+	 * @param category
+	 *            Zielkategorie, aus der eine Textur geladen werden soll
+	 * @return Texturobjekt aus der angeforderten Kategorie
+	 */
+	public Texture getTextureForCategory(TextureCategory category) {
+
+		assert mInitialized : "FEHLER: Die Texturverwaltung wurde nicht korrekt initialisiert!";
+
+		Texture texture = null;
+
+		Integer numberOfTexturesForCategory = mCategoryTextureCount
+				.get(category.toString());
+		assert numberOfTexturesForCategory > 0 : "Es existieren keine Texturen fuer die angefragte Kategorie: "
+				+ category;
+
+		// waehle zufallsbasiert eine Textur aus der Kategorie
+		Random rn = new Random();
+		int randomID = rn.nextInt(numberOfTexturesForCategory);
+
+		// pruefe, ob diese Textur bereits geladen wurde => Zugriff auf HashMap
+		// ist Kategorie + Index
+		String key = category.toString() + randomID;
+		texture = mTextures.get(key);
+
+		if (!texture.isLoaded()) {
+			texture.loadAndScaleTexture();
+		}
+		return texture;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode ermittelt den Schluessel innerhalb der HashMap, ueber den auf die
+	 * Textur zugegriffen werden kann
+	 * 
+	 * @param texture
+	 *            Texturobjekt, dessen Schluessel gesucht wird
+	 * @return Schluessel, sofern bereits ein Mapping existiert, null sonst
+	 */
+	private String getKeyForTexture(PImage texture) {
+		assert mInitialized : "FEHLER: Die Texturverwaltung wurde nicht korrekt initialisiert!";
+		String key = null;
+
+		// ermittle den Key, unter dem die Texture in den HashMaps liegt
+		if (mTextures.containsValue(texture)) {
+
+			Set<String> keys = mTextures.keySet();
+			Iterator<String> keyIter = keys.iterator();
+			while (keyIter.hasNext()) {
+				key = keyIter.next();
+
+				// stimmen die Texturen ueberein, gebe den Schluessel zurueck
+				if (mTextures.get(key).equals(texture))
+					return key;
+			}
+		}
+		// sonst null
+		return null;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Utility-Methode zur Anzeige des aktuellen Referenzstatus
+	 */
+	public void printReferenceStatus() {
+
+		System.out
+				.println("------------------------------------------------------------------------------------");
+		System.out.println("Status des Texturmanagers: ");
+		Set<String> keySet = mTextures.keySet();
+		String currentKey = null;
+		Iterator<String> keyIter = keySet.iterator();
+		Texture currentTexture = null;
+
+		Double memorySize = 0.0d;
+
+		while (keyIter.hasNext()) {
+			currentKey = keyIter.next();
+			currentTexture = mTextures.get(currentKey);
+			if (currentTexture.isLoaded()) {
+				System.out.println("Texture mit Key: " + currentKey
+						+ ", Skalierungsfaktor: "
+						+ currentTexture.getTextureScaleFactor()
+						+ " , Reference-Count: "
+						+ currentTexture.getReferenceCounter()
+						+ ", ungefaeherer Speicherbedarf: "
+						+ currentTexture.getMemorySize() + " MB");
+				memorySize += currentTexture.getMemorySize();
+			}
+		}
+		System.out.println("Gesamter Speicherbedarf fuer Texturen: "
+				+ memorySize + "MB");
+		System.out
+				.println("------------------------------------------------------------------------------------");
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mParent
+	 */
+	public PApplet getParent() {
+		return mParent;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mMaxTextureSize
+	 */
+	public int getMaxTextureSize() {
+		return mMaxTextureSize;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mMaxTextureScaleFactor
+	 */
+	public int getMaxTextureScaleFactor() {
+		return mMaxTextureScaleFactor;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mUseGL
+	 */
+	public boolean isUseGL() {
+		return mUseGL;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mUseGL
+	 *            the mUseGL to set
+	 */
+	public void setUseGL(boolean useGL) {
+
+		// falls OpenGL verwendet werden soll und noch nicht initialisiert ist,
+		// fuehre die notwendigen Schritte durch
+		if (useGL && !mUseGL) {
+			initTextureManagementForOGL();
+		}
+		this.mUseGL = useGL;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode initialisiert die TexturID-Generierung fuer die Verwendung von
+	 * OpenGL zur Texturierung der erzeugten Modelle
+	 */
+	private void initTextureManagementForOGL() {
+		assert mInitialized : "FEHLER: Die Texturverwaltung wurde nicht korrekt initialisiert!";
+
+		// erzeuge die erforderlichen Textur-IDs fuer OpenGL
+		IntBuffer glTextureIDs = IntBuffer.allocate(mTextures.size());
+
+		PGraphicsOpenGL pgl = (PGraphicsOpenGL) mParent.g;
+		GL gl = pgl.beginGL();
+
+		// erzeuge Integer-IDs fuer alle vorhandenen Texturen
+		gl.glGenTextures(mTextures.size(), glTextureIDs);
+
+		Collection<Texture> textureInstances = mTextures.values();
+		Iterator<Texture> texIter = textureInstances.iterator();
+		Texture currentTex = null;
+		int index = 0;
+
+		// uebertrage saemtliche generierten IDs in die Texture-Instanzen
+		while (texIter.hasNext()) {
+			currentTex = texIter.next();
+			currentTex.setGLTextureID(glTextureIDs.get(index));
+			index++;
+
+		}
+		pgl.endGL();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

@@ -1,0 +1,641 @@
+package semantic.city.builder.prototype.service;
+
+import java.io.PrintWriter;
+import java.io.StringWriter;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+import org.apache.log4j.Logger;
+
+import semantic.city.builder.math.Axis;
+import semantic.city.builder.math.MyPolygon;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.MyVectormath;
+import semantic.city.builder.math.Plane;
+import semantic.city.builder.math.Plane.CoordinatePlane;
+import semantic.city.builder.math.Ray;
+import semantic.city.builder.math.Vertex3d;
+import semantic.city.builder.prototype.algorithm.GrahamScan;
+
+/**
+ * 
+ * @author Patrick Gunia Klasse fungiert als Sammelbecken fuer Funktionen, die
+ *         an verschiedenen Stellen des Systems benoetigt werden, aber nicht zum
+ *         Mathepackage gehoeren, da sie zu stark von der Model-Struktur des
+ *         Verfahrens abhaengen. Beispielfunktionen sind Sortierroutinen fuer
+ *         haeufig auftretende Sortierfaelle. Singleton-Implementation
+ * 
+ */
+
+public class PrototypeHelper {
+
+	/** Logging-Instanz */
+	private static Logger logger = Logger.getLogger(PrototypeHelper.class);
+
+	// ------------------------------------------------------------------------------------------
+
+	/** Singleton-Instanz */
+	static private PrototypeHelper mInstance = null;
+
+	// ------------------------------------------------------------------------------------------
+
+	/** Singleton-Getter */
+	static public PrototypeHelper getInstance() {
+		if (mInstance == null)
+			mInstance = new PrototypeHelper();
+		return mInstance;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/** Verteckter Default-Konstruktor */
+	private PrototypeHelper() {
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/** Sortierroutinen fuer Vertexlisten anhand unterschiedlicher Koordinaten */
+	/**
+	 * Methode sortiert die uebergebene Vertexliste anhand der y-Koordinaten der
+	 * enthaltenen Vertices aufsteigend.
+	 * 
+	 * @param vertices
+	 *            Zu sortierende Liste
+	 */
+	public void sortVerticesByYCoordinate(final List<Vertex3d> vertices) {
+		// sortiere anhand der y-koordinate
+		Collections.sort(vertices, new Comparator<Vertex3d>() {
+			public int compare(Vertex3d o1, Vertex3d o2) {
+
+				Float o1Float = o1.getY();
+				Float o2Float = o2.getY();
+				return o1Float.compareTo(o2Float);
+			}
+		});
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode sortiert die uebergebene Vertexliste anhand der x-Koordinaten der
+	 * enthaltenen Vertices aufsteigend.
+	 * 
+	 * @param vertices
+	 *            Zu sortierende Liste
+	 */
+	public void sortVerticesByXCoordinate(List<Vertex3d> vertices) {
+		// sortiere anhand der y-koordinate
+		Collections.sort(vertices, new Comparator<Vertex3d>() {
+			public int compare(Vertex3d o1, Vertex3d o2) {
+
+				Float o1Float = o1.getX();
+				Float o2Float = o2.getX();
+				return o1Float.compareTo(o2Float);
+			}
+		});
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode sortiert die uebergebene Vertexliste anhand der z-Koordinaten der
+	 * enthaltenen Vertices aufsteigend.
+	 * 
+	 * @param vertices
+	 *            Zu sortierende Liste
+	 */
+	public void sortVerticesByZCoordinate(List<Vertex3d> vertices) {
+		// sortiere anhand der y-koordinate
+		Collections.sort(vertices, new Comparator<Vertex3d>() {
+			public int compare(Vertex3d o1, Vertex3d o2) {
+
+				Float o1Float = o1.getZ();
+				Float o2Float = o2.getZ();
+				return o1Float.compareTo(o2Float);
+			}
+		});
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode sortiert eine uebergebene Liste von Floats
+	 * 
+	 * @param values
+	 *            Liste mit zu sortierenden Werten
+	 */
+	public void sortFloats(List<Float> values) {
+		Collections.sort(values, new Comparator<Float>() {
+			public int compare(Float o1, Float o2) {
+				return o1.compareTo(o2);
+			}
+		});
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode sortiert eine uebergebene Liste von Floats
+	 * 
+	 * @param values
+	 *            Liste mit zu sortierenden Werten
+	 */
+	public void sortDoubles(List<Double> values) {
+		Collections.sort(values, new Comparator<Double>() {
+			public int compare(Double o1, Double o2) {
+				return o1.compareTo(o2);
+			}
+		});
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode sortiert eine Liste mit uebergebenen Strings basierend auf der
+	 * Laenge der einzelnen Stringelemente aufsteigend
+	 * 
+	 * @param values
+	 *            Liste mit Strings
+	 */
+	public void sortStringsByLength(final List<String> values) {
+		Collections.sort(values, new Comparator<String>() {
+			public int compare(String o1, String o2) {
+				Integer length1 = o1.length();
+				Integer length2 = o2.length();
+				return length1.compareTo(length2);
+			}
+		});
+		Collections.reverse(values);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode ist ein Wrapper fuer die Berechnung einer konvexen Huelle fuer
+	 * Vertices in einer beliebigen Ebene. Die Methode uebernimmt die fuer die
+	 * Berechnung erforderliche Projektion aller Vertices in die XY-Ebene,
+	 * berechnet ueber GrahamScan die konvexe Huelle und bringt die Vertices
+	 * anschliessend wieder zurueck in die Zielebene. Rueckgabe ist die konvexe
+	 * Huelle der Eingabepunkte in der Zielebene.
+	 * 
+	 * @param unprojectedVertices
+	 *            Liste mit Vertices in einer beliebig ausgerichteten Ebene
+	 * @return Konvexe Huelle der Eingabepunkte, zurueckprojiziert auf die
+	 *         Quellebene
+	 */
+	public List<Vertex3d> computeConvexHullForUnprojectedVertices(
+			List<Vertex3d> unprojectedVertices, MyVector3f normal) {
+
+		logger.info("ANZAHL VERTS: " + unprojectedVertices.size());
+		Map<Vertex3d, Vertex3d> projectedToOriginalVertices = projectVerticesToXYPlane(
+				unprojectedVertices, normal);
+
+		List<Vertex3d> projectedVertices = new ArrayList<Vertex3d>(
+				projectedToOriginalVertices.size());
+		projectedVertices.addAll(projectedToOriginalVertices.keySet());
+
+		// berechne die konvexe Huelle
+		GrahamScan convexHull = new GrahamScan(projectedVertices);
+		List<Vertex3d> outlineProjected = convexHull.computeConvexHull();
+
+		// bringe die Vertices zurueck auf die originalen Vertices
+		List<Vertex3d> outline = new ArrayList<Vertex3d>(
+				outlineProjected.size());
+		Vertex3d currentProjected = null, currentVertex = null;
+
+		for (int i = 0; i < outlineProjected.size(); i++) {
+			currentProjected = outlineProjected.get(i);
+			currentVertex = projectedToOriginalVertices.get(currentProjected);
+			assert currentVertex != null : "FEHLER: Fuer Vertex "
+					+ currentProjected + " existiert kein Mapping!";
+			outline.add(currentVertex);
+		}
+
+		return outline;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode sucht einen Startpunkt innerhalb der uebergebenen Punktmenge, der
+	 * definitiv auf der konvexen Huelle der Punktwolke liegt. Hierbei handelt
+	 * es sich um den Punkt mit der kleinsten y-Koordinate (Ordinate), kommen
+	 * mehrere Punkte mit dieser Koordinate vor, so verwendet man den Punkt mit
+	 * der kleinsten x-Koordinate (Abszisse). Da Processing ein gedrehtes
+	 * Koordinatensystem nutzt, bestimmt man hier die Vertices mit der GROESSTEN
+	 * y-Koordinaten und kleinsten x-Koordinate
+	 * 
+	 * @param Liste
+	 *            mit Vertices in der xy-Ebene, fuer die ein Vertex gesucht
+	 *            werden soll, das garantiert nicht innerhalb der konvexen
+	 *            Huelle der Punktwolke liegt
+	 */
+	public Vertex3d findStartPoint(List<Vertex3d> vertices) {
+
+		// 1. Schritt: sortiere die Punkte anhand ihrer y-Koordinate
+		sortVerticesByYCoordinate(vertices);
+
+		List<Vertex3d> buffer = new ArrayList<Vertex3d>(vertices.size());
+
+		// durchlaufe die sortierte Liste absteigend, um zu pruefen, ob mehrere
+		// Vertices mit gleicher y-Koordinate vorkommen
+		Float maxY = vertices.get(vertices.size() - 1).getY();
+
+		// Startvertex zum Buffer, ist auf jeden Fall dabei
+		buffer.add(vertices.get(vertices.size() - 1));
+
+		Vertex3d currentVertex = null;
+		for (int i = vertices.size() - 2; i >= 0; i--) {
+			currentVertex = vertices.get(i);
+
+			// wird ein Vertex mit gleichem y-Wert gefunden, adde es zum Buffer
+			if (currentVertex.getY() == maxY)
+				buffer.add(currentVertex);
+			// sonst breche ab
+			else
+				break;
+		}
+
+		// kommt nur ein Vertex vor, hat man den Startpunkt
+		if (buffer.size() == 1)
+			return buffer.get(0);
+
+		// sonst sortiert man den Buffer anhand der x-Koordinaten
+		sortVerticesByXCoordinate(buffer);
+
+		// gebe das erste Element der Liste zurueck, dies ist der Startpunkt
+		return buffer.get(0);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erzeugt eine Map-Struktur bestehend aus der Projektion jedes
+	 * uebergebenen Vertex in die XY-Ebene und dem Quellvertex. Die Projektion
+	 * fungiert dabei als Schluessel fuer den Zugriff auf die Values innerhalb
+	 * der Map.
+	 * 
+	 * @param vertices
+	 *            Liste mit Vertices, fuer die eine Map-Struktur aufgebaut
+	 *            werden soll
+	 * @param normal
+	 *            Normalenvektor der Ebene, in der sich die Punkte befinden, die
+	 *            auf die XY-Ebene projiziert werden sollen
+	 * @return Mapstruktur, die projizierten Vertices ihre Originalvertices
+	 *         zuordnet
+	 */
+	public Map<Vertex3d, Vertex3d> projectVerticesToXYPlane(
+			List<Vertex3d> vertices, MyVector3f normal) {
+
+		// projiziere alle Punkte auf die xy-Ebene und baue dabei eine Map
+		// auf, die die projizierten den
+		// Ausgangsvertices zuordnet
+		logger.debug("NORMAL: " + normal);
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		Axis ignorableAxis = mathHelper.getIgnorableAxis(normal, false);
+
+		logger.debug("IgnorableAxis: " + ignorableAxis);
+		Map<Vertex3d, Vertex3d> projectedToOriginalVertices = new HashMap<Vertex3d, Vertex3d>(
+				vertices.size());
+
+		Vertex3d currentProjected = null;
+		for (int i = 0; i < vertices.size(); i++) {
+			currentProjected = mathHelper.createXYPlaneProjectionForPoint(
+					vertices.get(i), ignorableAxis);
+			projectedToOriginalVertices.put(currentProjected, vertices.get(i));
+		}
+
+		return projectedToOriginalVertices;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode erzeugt eine Map-Struktur bestehend aus der Projektion jedes
+	 * uebergebenen Vertex in die XY-Ebene und dem Quellvertex. Die Projektion
+	 * fungiert dabei als Schluessel fuer den Zugriff auf die Values innerhalb
+	 * der Map. Im Gegensatz zur 2. Methode wird die Projektion hier durch
+	 * Schnittpunktberechnungen durchgefuehrt
+	 * 
+	 * @param vertices
+	 *            Liste mit Vertices, fuer die eine Map-Struktur aufgebaut
+	 *            werden soll
+	 * @return Mapstruktur, die projizierten Vertices ihre Originalvertices
+	 *         zuordnet
+	 */
+	public Map<Vertex3d, Vertex3d> projectVerticesToXYPlaneByRayIntersection(
+			List<Vertex3d> vertices) {
+
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		Plane xyPlane = new Plane(CoordinatePlane.XY);
+		Map<Vertex3d, Vertex3d> projectedToOriginalVertices = new HashMap<Vertex3d, Vertex3d>(
+				vertices.size());
+
+		Vertex3d currentVert = null, currentProjected = null;
+		MyVector3f intersection = null;
+		Ray currentRay = null;
+		MyVector3f planeNormal = xyPlane.getNormal();
+
+		// projiziere alle Vertices durch Strahl-Ebene-Schnittpunktbestimmung
+		// auf die XY-Ebene
+		for (int i = 0; i < vertices.size(); i++) {
+			currentVert = vertices.get(i);
+			currentRay = new Ray(currentVert.getPosition(), planeNormal);
+			intersection = mathHelper.calculateRayPlaneIntersection(currentRay,
+					xyPlane);
+			if (intersection != null) {
+				currentProjected = new Vertex3d(intersection);
+				projectedToOriginalVertices.put(currentProjected, currentVert);
+			}
+		}
+		return projectedToOriginalVertices;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode wandelt den uebergebenen Integer uber Bit-Shifts in ein
+	 * Byte-Array um und gibt dieses zurueck
+	 * 
+	 * @param value
+	 *            Integer-Wert
+	 * @return Byte-Array, dass die Byte-Komponenten des Eingabeints enthaelt
+	 */
+	public byte[] intToByteArray(int value) {
+		ByteBuffer buffer = ByteBuffer.allocate(4);
+		buffer.putInt(value);
+		return buffer.array();
+
+		/*
+		 * return new byte[] { (byte) (value >> 24), (byte) (value >> 16),
+		 * (byte) (value >> 8), (byte) value };
+		 */
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet fuer uebergebene Vertices, ob diese ein gueltiges
+	 * Dreieck bilden, dies ist dann der Fall, wenn der Flaecheninhalt > 0 ist
+	 */
+	public boolean isValidTriangle(List<Vertex3d> corners) {
+		// for(int i = 0; i < corners.size(); i++)
+		// System.out.println(corners.get(i));
+		Float area = MyVectormath.getInstance().computePolygonArea(corners);
+		logger.trace("Flaeche des Dreiecks: " + area);
+
+		// wenn der Flaecheninhalt unterhalb eines Grenzwertes liegt, wird das
+		// Dreieck als entartet angesehen
+		if (!MyVectormath.getInstance().isWithinTolerance(area, 0.0f, 0.05f))
+			return true;
+		else
+			return false;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode schiebt Vertices innerhalb Liste bei jedem Aufruf um eine
+	 * Position nach "rechts"
+	 * 
+	 * @param verts
+	 *            Liste mit Vertices, deren Position verschoben werden soll
+	 */
+	private void rearrangeVertices(List<Vertex3d> verts) {
+		List<Vertex3d> rearranged = new ArrayList<Vertex3d>(verts.size());
+
+		// alles ein Vertex nach hinten schieben
+
+		rearranged.addAll(verts.subList(1, verts.size()));
+		rearranged.add(verts.get(0));
+
+		verts.clear();
+		verts.addAll(rearranged);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode flippt das uebergebene Vertexarray derart, dass die Vertexorder
+	 * umgekehrt ist
+	 * 
+	 * @param verts
+	 *            Vertices, die geflippt werden sollen
+	 */
+	private void flipVertices(List<Vertex3d> verts) {
+		List<Vertex3d> result = new ArrayList<Vertex3d>(verts.size());
+
+		// System.out.println("FLIPPING: " );
+		for (int i = verts.size() - 1; i >= 0; i--) {
+			// System.out.println(result.size() + ": " + verts.get(i));
+			result.add(verts.get(i));
+		}
+
+		verts.clear();
+		verts.addAll(result);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erzeugt eine Anordnung der uebergebenen Vertices, die dafuer
+	 * sorgt, dass die berechnete Normale der Zielnormalen entspricht (bzw. nahe
+	 * an deren Ausrichtung liegt)
+	 * 
+	 * @param verts
+	 *            Liste mit Vertices, deren Anordnung modifiziert werden soll,
+	 *            um die korrekte Ausrichtung zu erhalten
+	 * @param targetNormal
+	 *            Zielnormale
+	 * @return False, falls keine Aenderung vorgenommen wurde, True sonst
+	 */
+	public boolean normalizeNormal(List<Vertex3d> verts, MyVector3f targetNormal) {
+
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		MyVector3f currentNormal = mathHelper.calculateNormalNewell(verts);
+
+		Double angle = mathHelper.calculateAngleRadians(currentNormal,
+				targetNormal);
+
+		// logger.error("NORMAL: " + currentNormal + " Angle: " + angle);
+
+		// verwende eine Toleranz, die knapp unter Pi liegt, durch den Import
+		// koennen Faces entstehen, die extrem klein sind
+		// dadurch entstehen Fehler in der Winkelberechnung, darum soll nur
+		// festgestellt werden, wenn die Normals gedreht sind,
+		// in diesem Fall werden die Vertices geswitcht
+		double tolerance = 3.0;
+		if (angle < tolerance)
+			return false;
+
+		// sonst Flip
+		flipVertices(verts);
+		currentNormal = mathHelper.calculateNormalNewell(verts);
+		angle = mathHelper.calculateAngleRadians(currentNormal, targetNormal);
+		// NaN als Winkel zeigt an, dass die Vektoren parallel sind, darum ist
+		// auch dies ein gueltiges Ergebnis
+		assert angle < tolerance || angle.equals(Double.NaN) : "FEHLER: Vertexflip fuehrte zu keiner Aenderung der Normalenausrichtung! Winkel: "
+				+ angle;
+		return true;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode normalisiert Normalenausrichtungen dahingehend, dass alle Normals
+	 * der Polygone nach der Berechnung aus dem Polyeder herauszeigen, der durch
+	 * die Eingabepolygone definiert wird (Voraussetzung dabei ist, dass der
+	 * Eingabepolyeder geschlossen ist, also keine Loecher enthaelt)
+	 * 
+	 * @param polygons
+	 *            Polyeder, definiert durch eine Menge von Polygonen
+	 */
+	public void normalizeNormals(List<MyPolygon> polygons) {
+
+		List<MyPolygon> invalidPolys = new ArrayList<MyPolygon>(polygons.size());
+
+		MyPolygon currentPoly = null;
+		for (int i = 0; i < polygons.size(); i++) {
+			currentPoly = polygons.get(i);
+			if (!isValidPoly(currentPoly, polygons)) {
+				invalidPolys.add(currentPoly);
+			}
+		}
+
+		for (int i = 0; i < invalidPolys.size(); i++) {
+			repairInvalidPoly(invalidPolys.get(i), polygons);
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode aendert die Vertexorder innerhalb des Polygons derart, dass die
+	 * entstehende Normale umgekehrt zur Ausgangsnormale steht
+	 * 
+	 * @param invalid
+	 *            Polygon, dessen Normalenvektor die falsche Ausrichtung besitzt
+	 * @return Polygon mit angepasster Vertexorientierung
+	 */
+	private void repairInvalidPoly(MyPolygon invalid, List<MyPolygon> polygons) {
+
+		List<Vertex3d> verts = invalid.getVertices();
+
+		// versuche zunaechst einen einfachen Flip
+		flipVertices(verts);
+		invalid.update(verts);
+		/*
+		 * int maxNumberOfTries = invalid.getPoints().size(); int count = 0;
+		 * 
+		 * while(!isValidPoly(invalid, polygons) || count < maxNumberOfTries) {
+		 * verts = invalid.getPoints(); rearrangeVertices(verts);
+		 * invalid.update(verts); // logger.error("UNGUELTIGES POLYGON: " +
+		 * invalid); count++; }
+		 * 
+		 * assert count <= maxNumberOfTries: "FEHLER: Das Polygon " + invalid +
+		 * " konnte nicht repariert werden!";
+		 */
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet Schnitte des Normalenvektors des aktuellen Polygons mit
+	 * allen anderen Polygonen des Polyeders
+	 * 
+	 * @param poly
+	 *            Polygon, das dahingehend untersucht wird, ob seine Normale aus
+	 *            dem Polyeder hinauszeigt, von dem es Teil ist
+	 * @param others
+	 *            Liste mit weiteren Polygonen, die einen Polyeder bilden, zu
+	 *            dem auch das Eingabepolygon gehoert
+	 * @return True, falls es sich um ein gueltiges Polygon mit korrekt
+	 *         ausgerichteter Normalen handelt, False sonst
+	 */
+	private boolean isValidPoly(MyPolygon poly, List<MyPolygon> others) {
+
+		MyVectormath mathHelper = MyVectormath.getInstance();
+
+		MyPolygon currentPoly = null;
+		Plane currentPolyPlane = null;
+		MyVector3f rayToPlaneIntersection = null;
+		boolean isPointInPoly = false;
+		Float numberOfHits = 0.0f;
+		double rayParam = 0;
+
+		// berechne den Mittelpunkt des Polygons, verwendet man einen Eckpunkt,
+		// werden die Parameter sehr klein und man bekommt Probleme mit etwaigen
+		// Rundungsfehlern
+		// MyVector3f polyCenter =
+		// mathHelper.calculatePolygonCenter(poly.getPoints());
+
+		// Teststrahl bauen, Punkt im Polygon + Normalenvektor
+		// Ray testRay = new Ray(poly.getPointInPoly(), poly.getNormalPtr());
+		Ray testRay = new Ray(poly.getCenter(), poly.getNormalPtr());
+
+		for (int i = 0; i < others.size(); i++) {
+			currentPoly = others.get(i);
+			if (currentPoly.equals(poly))
+				continue;
+
+			currentPolyPlane = currentPoly.getPlane();
+
+			// berechne den Durchstosspunkt des Strahls durch die Polygonebene
+			rayToPlaneIntersection = mathHelper.calculateRayPlaneIntersection(
+					testRay, currentPolyPlane);
+			if (rayToPlaneIntersection == null)
+				continue;
+
+			// liegt der Treffer hinter dem Strahlenanfang?
+			rayParam = mathHelper.calculateParameterOnRayForPoint(
+					rayToPlaneIntersection, testRay);
+			if (rayParam < 0)
+				continue;
+
+			// wenn eine Kante getroffen wurde, addiere 0.5f => dann wird es
+			// auch weitere Kanten geben, die getroffen werden
+			if (mathHelper.isPointOnPolyEdge(currentPoly,
+					rayToPlaneIntersection)) {
+				// System.out.println("HIT EDGE" + " Strahl: " + testRay +
+				// " Poly: " + currentPoly);
+				numberOfHits += 0.5f;
+			} else {
+				// wenn die Ebene getroffen wurde, teste, ob der Trefferpunkt im
+				// Polygon liegt
+				isPointInPoly = mathHelper.isPointInPolygon(currentPoly,
+						rayToPlaneIntersection);
+				if (isPointInPoly)
+					numberOfHits++;
+			}
+		}
+
+		if (numberOfHits != 0.0f)
+			logger.trace("NUMBER OF HITS: " + numberOfHits);
+
+		// wenn eine gerade Anzahl an Treffern vorliegt, so zeigt die Normale in
+		// eine korrekte Richtung
+		if (numberOfHits % 2 == 0)
+			return true;
+
+		// wenn eine ungerade Anzahl vorkommt, oder 0.5f im gebrochenen Anteil,
+		// so ist das Polygon ungueltig
+		else
+			return false;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode gibt den Stacktrace der uebergebenen Exception als String
+	 * zurueck, damit er uber Standard-Logger ausgegeben werden kann
+	 * 
+	 * @param ex
+	 *            Exception oder AssertionError, deren Stacktrace ausgegebene
+	 *            werden soll
+	 * @return Stacktrace als String
+	 */
+	public String getStackTrace(final Throwable ex) {
+		StringWriter sWriter = new StringWriter();
+		PrintWriter pWriter = new PrintWriter(sWriter);
+		ex.printStackTrace(pWriter);
+		return sWriter.toString();
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

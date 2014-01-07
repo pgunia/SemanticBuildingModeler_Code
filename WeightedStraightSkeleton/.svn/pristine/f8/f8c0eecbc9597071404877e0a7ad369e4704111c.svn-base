@@ -1,0 +1,114 @@
+package semantic.city.builder.weightedstraightskeleton.algorithm;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import math.MyVector3f;
+
+/**
+ * @author Patrick Gunia
+ * 
+ *         Basisklasse fuer alle Arten von Events. Height-Events werden durch
+ *         die Schnittberechnung von je 3 Ebenen bestimmt. Nachfolgende Analysen
+ *         der Events koennen dazu fuehren, dass die IntersectionEvents durch Split-
+ *         oder Vertex-Events ersetzt werden.
+ * 
+ * 
+ */
+public class IntersectionEvent extends AbstractEvent {
+
+	/** 
+	 * Nachabrvertices, uebder die die Schnittebenen ausgewaehlt werden. Bei Height- und Split-Events gibt es immer nur ein Vertex in diesem Vektor,
+	 * bei Vertex-Events dagegen 2
+	 */
+	protected List<SkeletonVertex> mTestplaneVertices = null;
+
+	/**
+	 * @param mVertex
+	 * @param mSchnittpunkt
+	 * @param mDistance
+	 * @param secondVertex
+	 */
+	public IntersectionEvent(final SkeletonVertex mVertex, final MyVector3f mSchnittpunkt,
+			float mDistance, final SkeletonVertex secondVertex) {
+		super(mVertex, mSchnittpunkt, mDistance);
+		mTestplaneVertices = new ArrayList<SkeletonVertex>();
+		mTestplaneVertices.add(secondVertex);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "IntersectionEvent";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String toString() {
+
+		String result = getType() + ": EventVertex: "
+				+ getVertex().getPositionPtr();
+		if (getVertex().isReflexVertex())
+			result += " Reflex-Vertex ";
+		if (getVertex().isTwinVertex())
+			result += " Twin-Vertex ";
+		result += " Schnittpunkt: " + getSchnittpunktPtr() + " Distanz: "
+				+ getDistance() + " NachbarVertex: "
+				+ getSecondVertex().getPositionPtr() + mLineBreak;
+
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return
+	 */
+	public SkeletonVertex getSecondVertex() {
+		assert mTestplaneVertices.size() > 0: "Fuer den Event wurde kein Testplane-Vertex gesetzt";
+		return mTestplaneVertices.get(0);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = super.hashCode();
+		result = prime
+				* result
+				+ ((mTestplaneVertices == null) ? 0 : mTestplaneVertices
+						.hashCode());
+		return result;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (!super.equals(obj))
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		IntersectionEvent other = (IntersectionEvent) obj;
+		if (mTestplaneVertices == null) {
+			if (other.mTestplaneVertices != null)
+				return false;
+		} else if (!mTestplaneVertices.equals(other.mTestplaneVertices))
+			return false;
+		return true;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mSecondVertex
+	 */
+	public void setSecondVertex(final SkeletonVertex mSecondVertex) {
+		this.mTestplaneVertices.add(mSecondVertex);
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

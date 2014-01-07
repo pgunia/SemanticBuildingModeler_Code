@@ -1,0 +1,53 @@
+package skeletonAlgorithm;
+
+import math.Vertex3d;
+
+public class SkeletonTriangle {
+	
+	private Vertex3d[] mVertices; 
+	
+	// ------------------------------------------------------------------------------------------
+
+	public SkeletonTriangle(Vertex3d[] vertices) {
+		mVertices = vertices;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public SkeletonTriangle() {
+		mVertices = new Vertex3d[3];
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public Vertex3d[] getVertices() {
+		return mVertices;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public void setVertices(Vertex3d[] mVertices) {
+		this.mVertices = mVertices;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String toString() {
+		String lineBreak = System.getProperty("line.separator");
+		String result = "";
+		
+		for(int i = 0; i < mVertices.length; i++) {
+			result += mVertices[i].getPosition() + lineBreak;
+		}
+		
+		
+		return "SkeletonTriangle " + lineBreak + result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	
+
+	
+	
+}
+

@@ -1,0 +1,4 @@
+29 Nov 2012 18:44:21 DEBUG - BuildingDimensions.construct(45) | BuildingDimension: BuildingDimensions: Width: Range: lower Border: 120.0 upper Border: 180.0 Height: Range: lower Border: 120.0 upper Border: 180.0 Length: Range: lower Border: 75.0 upper Border: 95.0 Wall-Thickness: 3.0
+29 Nov 2012 18:44:21 DEBUG - RoofConfiguration.construct(47) | Dach-Konfiguration: RoofConfiguration: Main-Slope: Range: lower Border: 1.0 upper Border: 1.2 Side-Slope: Range: lower Border: 0.7 upper Border: 1.0 Equal-Weight-Probability: 1.5 Scaling: 0.5
+29 Nov 2012 18:44:21 DEBUG - AbstractConfigurationObject.loadExternalRessource(61) | Loading external Ressource 'http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/XML/FootprintPlacement.xml'...
+29 Nov 2012 18:44:21 DEBUG - AbstractConfigurationObject.loadExternalRessource(110) | Loading external Ressource...done

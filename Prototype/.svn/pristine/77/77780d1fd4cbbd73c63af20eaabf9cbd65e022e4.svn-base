@@ -1,0 +1,409 @@
+package semantic.city.builder.prototype.building.component;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+
+import processing.core.PApplet;
+import semantic.city.builder.configurationservice.model.AbstractConfigurationObject;
+import semantic.city.builder.configurationservice.model.component.MouldingComponentConfiguration;
+import semantic.city.builder.configurationservice.model.enums.Side;
+import semantic.city.builder.configurationservice.model.enums.VerticalAlignment;
+import semantic.city.builder.math.MyPolygon;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.MyVectormath;
+import semantic.city.builder.math.Plane;
+import semantic.city.builder.math.Ray;
+import semantic.city.builder.math.Vertex3d;
+import semantic.city.builder.prototype.graphics.complex.AbstractComplex;
+import semantic.city.builder.prototype.graphics.complex.FreeComplex;
+import semantic.city.builder.prototype.graphics.primitives.AbstractQuad;
+
+/**
+ * Klasse dient der Erzeugung und Verwaltung von Gesimsen. Diese werden aus
+ * importierten Profilen durch Extrusion erzeugt und an der jeweiligen Zielwand
+ * ausgerichtet. Das Profil muss dabei verschiedene Vorbedingungen erfuellen, um
+ * korrekt ausgerichtet zu werden: 1. Modellierung im FRONT-Viewport (xz-Ebene
+ * bei 3ds) 2. Die Kante, die an die Wand angepasst wird, MUSS auf der rechten
+ * Seite des Profils liegen Weiterhin MUSS die Zielwand, an der das Gesimse
+ * appliziert wird, senkrecht zur XZ-Ebene stehen, sonst scheitert die
+ * Positionierungsberechnung
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public class Moulding extends AbstractBuildingComponent {
+
+	/** Laenge des skalierten Profils (wird fuer Verbindungsstuecke benoetigt) */
+	private transient Float mScaledProfileLength = null;
+
+	/** Geladenes Profil des zu positionierenden Gesimses */
+	private transient AbstractComplex mProfile = null;
+
+	/** Polygon, an dem das Gesimse angebracht werden soll */
+	private transient MyPolygon mTargetPolygon = null;
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor mit Uebergabe einer Konfiguration
+	 * 
+	 * @param applet
+	 *            Drawing Context
+	 * @param mouldingConf
+	 *            Konfigurationsobjekt
+	 * @param mouldingProfile
+	 *            Geladenes Profil
+	 * @param targetPolygon
+	 *            Polygon, an dem das Profil angebracht werden soll
+	 */
+	public Moulding(final PApplet applet,
+			final AbstractConfigurationObject mouldingConf,
+			final AbstractComplex mouldingProfile, final MyPolygon targetPolygon) {
+		super(applet, mouldingConf);
+		mProfile = mouldingProfile;
+		mTargetPolygon = targetPolygon;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor ohne Konfigurationsobjekt, Config wird aus
+	 * Konfigurationsdatei gelesen
+	 * 
+	 * @param applet
+	 *            Drawing Context
+	 */
+	public Moulding(final PApplet applet) {
+		super(applet);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void createComponent() {
+		final MouldingComponentConfiguration conf = (MouldingComponentConfiguration) mConf;
+		assert mProfile != null && mTargetPolygon != null : "FEHLER: Profil oder Zielpolygon sind nicht gesetzt!";
+
+		// erzeuge aus den geladenen Vertices des Profils ein Footprint-Polygon
+		List<Vertex3d> profVerts = null;
+
+		// erzeuge Kopien der Vertices des geladenen Profils, auf diesen wird
+		// spaeter gearbeitet
+		final List<Vertex3d> srcVerts = mProfile.getVertices();
+		profVerts = new ArrayList<Vertex3d>(srcVerts.size());
+
+		for (Vertex3d curVert : srcVerts) {
+			profVerts.add(curVert.clone());
+		}
+
+		final MyVectormath mathHelper = MyVectormath.getInstance();
+		final MyPolygon profilePoly = new MyPolygon(profVerts);
+		profVerts = null;
+
+		// Die Berechnung basiert auf der Annahme, dass die Zielwand senkrecht
+		// zur XZ-Ebene steht => nur in diesem Fall greifen die Berechnungen
+		final Float scalingFactor = scaleProfile(conf.getMouldingHeightRatio(),
+				profilePoly, mProfile.getBB().getHeight(),
+				mTargetPolygon.getHeight());
+
+		// speichere die Laenge des skalierten Profils
+		mScaledProfileLength = mProfile.getBB().getLength() * scalingFactor;
+
+		// bestimme die Anschlusskante des Profilpolygons
+		final Ray fittingEdge = detectFittingEdge(profilePoly);
+		LOGGER.debug("Fitting-Edge: " + fittingEdge);
+
+		// Normalenvektor des Profils zeigt per Definition in Richtung der
+		// positiven z-Achse
+		final MyVector3f profileFrontNormal = new MyVector3f(0.0f, 0.0f, 1.0f);
+		double angleRad = mathHelper.getFullAngleRad(
+				mTargetPolygon.getNormalPtr(), profileFrontNormal);
+
+		// wenn der berechnete Full-Angle = 0 ist, verwende die Standardfunktion
+		// zum Pruefen, ob die Ausrichtung passt
+		// ist erforderlich, da es sonst zu Problemen kommt, wenn Quad-Normal
+		// und Profile-Normal einen 180°-Winkel beschreiben
+		if (angleRad == 0.0d) {
+			angleRad = mathHelper.calculateAngleRadians(
+					mTargetPolygon.getNormalPtr(), profileFrontNormal);
+		}
+
+		// double angleRad = mathHelper.calculateAngleRadians(quadNormal,
+		// profileFrontNormal);
+		// logger.error("Profile-Normal: " + profileFrontNormal +
+		// " Poly-Normal: " + mTargetPolygon.getNormalPtr() + " Winkel: " +
+		// angleRad);
+
+		// Normalen sollen im 90°-Winkel zueinander stehen
+		final double targetAngleRad = Math.PI / 2.0d;
+		double rotationAngleRad = targetAngleRad - angleRad;
+
+		// Abweichung von ca. 2° ist akzeptabel, sonst muss das Profil rotiert
+		// werden
+		if (!mathHelper.isWithinTolerance(rotationAngleRad, 0.0d, 0.05d)) {
+
+			// rotiere das Polygon um die Anschlusskante
+			mathHelper.rotatePolygonAroundArbitraryAxis(fittingEdge,
+					profilePoly, rotationAngleRad);
+		}
+
+		// aktualisiere nach der Rotation der Vertices die Polygonstrukturen
+		profilePoly.update();
+
+		// Ausrichtung passt, passe das Profil an die Wand an, schiebe es in
+		// eine Quadecke, so dass in Richtung der Quadkante extrudiert werden
+		// kann
+		final Ray quadRay = alignProfileWithWall(profilePoly, mTargetPolygon,
+				fittingEdge, conf);
+
+		LOGGER.debug("Quadkante: " + quadRay.getDirectionPtr() + " Laenge: "
+				+ quadRay.getLength() + " Profile-Normal: "
+				+ profilePoly.getNormalPtr());
+
+		// erstelle das Objekt als FreeComplex, um die Extrusionsberechnungen
+		// verwenden zu koennen
+		// uebergebe eine leere Alignment-Map => dadurch bleiben die Profile an
+		// den Seiten TOP- und BOTTOM
+
+		FreeComplex moulding = new FreeComplex(mComponent.getParent(),
+				profilePoly, quadRay.getLength(),
+				new HashMap<MyVector3f, Side>(0), false);
+		moulding.create();
+		moulding.unregister();
+
+		// fuelle die Daten des FreeComplex in das Komponenten-Member-Objekt
+		mComponent.setVertices(moulding.getVertices());
+		mComponent.setOutdoorQuads(moulding.getOutdoorQuads());
+		mComponent.create();
+
+		// Objekt wird nicht mehr laenger benoetigt
+		moulding = null;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	protected String getType() {
+		return "moulding";
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet, ob die anpassende Kante und ihre Vertices am naechsten an
+	 * der Wand liegen
+	 * 
+	 * @param poly
+	 *            Polygon, dass das Profil des Gesimses beschreibt
+	 * @param targetQuad
+	 *            Wandquad, an dem das Gesimse angebracht werden soll
+	 * @param fittingEdge
+	 *            Kante, mit der das Gesimse anliegen soll
+	 */
+	private void checkAlignment(final MyPolygon poly,
+			final AbstractQuad targetQuad, final Ray fittingEdge) {
+
+		Plane quadPlane = targetQuad.getPlane();
+
+		// bestimme das Vertex mit dem geringsten Abstand von der Wand => dieses
+		// muss nach Konstruktion auf der anliegenden Kante liegen
+		float minDistance = Float.MAX_VALUE, currentDistance = 0.0f;
+		List<Vertex3d> verts = poly.getVertices();
+		Vertex3d currentMinVert = null, currentVert = null;
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		for (int i = 0; i < verts.size(); i++) {
+			currentVert = verts.get(i);
+			currentDistance = mathHelper.calculatePointPlaneDistance(
+					currentVert.getPositionPtr(), quadPlane);
+			if (currentDistance < minDistance) {
+				currentMinVert = currentVert;
+				minDistance = currentDistance;
+			}
+		}
+
+		// liegt das minimale Vertex auf der anliegenden Kante
+		if (mathHelper.isPointOnRay(currentMinVert.getPositionPtr(),
+				fittingEdge))
+			return;
+		// nein: rotiere alle Punkte um 180° um die anliegende Kante
+		else {
+			MyVector3f newPosition = null;
+			for (int i = 0; i < verts.size(); i++) {
+				currentVert = verts.get(i);
+				newPosition = mathHelper.calculateRotatedVectorRadians(
+						fittingEdge.getDirectionPtr(),
+						currentVert.getPositionPtr(), Math.PI);
+				currentVert.setPosition(newPosition);
+			}
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode richtet das Profil derart an der Wand aus, dass es an einer Ecke
+	 * positioniert wird, wobei der Normalenvektor des Profils in Richtung der
+	 * Quadkante an diesem Punkt zeigt. Dadurch kann das Profil spaeter als
+	 * Grundriss fuer Extrusionsberechnungen verwendet werden Das Profil ist bei
+	 * der Eingabe in diese Funktion bereits derart ausgerichtet, dass es
+	 * senkrecht zur Zielwand steht. Die Extrusionsrichtung wird durch die
+	 * Ermittlung einer Qandkante realisiert, dabei wird davon ausgegangen, dass
+	 * eine Kante existiert, die parallel / antiparallel zur Profilnormalen
+	 * verlaeuft.
+	 * 
+	 * @param poly
+	 *            Gesimseprofil
+	 * @param targetPoly
+	 *            Polygon, an dem das Gesimse positioniert werden soll
+	 * @param fittingEdge
+	 *            Kante des Profils, die am Quad ausgerichtet wird
+	 * @param conf
+	 *            Konfiguration zur Gesimspositionierung
+	 * @return Quadkante, an der das Profil positioniert wird
+	 */
+	private Ray alignProfileWithWall(final MyPolygon poly,
+			final MyPolygon targetPoly, final Ray fittingEdge,
+			final MouldingComponentConfiguration conf) {
+
+		// berechne den Abstand der anpassenden Kante von der Wand und
+		// verschiebe das Profil anschliessend derart, dass es in der Wandebene
+		// liegt
+		final MyVectormath mathHelper = MyVectormath.getInstance();
+		final MyVector3f polyNormal = targetPoly.getNormal();
+		polyNormal.normalize();
+
+		// bestimme nun eine Kante des Quads, deren Richtung der Normalen des
+		// Profils entspricht
+		final List<Ray> quadRays = targetPoly.getRays();
+		double currentAngle = 0, minAngle = Double.MAX_VALUE;
+
+		Ray currentMinRay = null;
+		final MyVector3f profileNormal = poly.getNormal();
+
+		for (Ray currentRay : quadRays) {
+			currentAngle = mathHelper.calculateAngleRadians(profileNormal,
+					currentRay.getDirection());
+			if (Math.abs(currentAngle) < minAngle) {
+				currentMinRay = currentRay;
+				minAngle = Math.abs(currentAngle);
+			}
+		}
+
+		// Strahl von der oberen auf die untere Quadkante holen
+		// funktioniert NUR bei rechteckigen Wandpolygonen, die die vorab
+		// erlaeuterten Voraussetzungen erfuellen
+		final Ray vertRay = targetPoly.getVerticalRay();
+
+		// nicht garantiert, dass der berechnete Strahl auf das gleiche Vertex
+		// zeigt, bei dem der min-Strahl beginnt <=> testen
+		LOGGER.debug("MIN-START: " + currentMinRay.getStartPtr()
+				+ " VERT-END: " + vertRay.getEndPtr());
+
+		float distance = mathHelper.calculatePointPointDistance(
+				currentMinRay.getStartPtr(), vertRay.getEndPtr());
+		if (!mathHelper.isWithinTolerance(distance, 0.0f, 0.05f)) {
+
+			LOGGER.debug("VERSCHOBEN, Distanz: " + distance);
+			// verschiebe den Strahl entgegen der Min-Ray-Richtung
+			// dadurch zeigt der vertikale Strahl auf jeden Fall auf das
+			// Startvertex der Kante, in deren Richtung extrudiert wird
+			final MyVector3f minRayDirection = currentMinRay.getDirection();
+			minRayDirection.scale(-1.0f);
+			vertRay.translate(minRayDirection);
+		}
+
+		LOGGER.debug("Minray: " + currentMinRay + " MinRay-Length: "
+				+ currentMinRay.getLength() + " VertRay: " + vertRay
+				+ " Fitting: " + fittingEdge);
+
+		// werte die vertikale Ausrichtung aus
+		final VerticalAlignment vertAlignment = conf.getVerticalAlignment();
+
+		MyVector3f anchorWall = null, anchorProfile = null;
+
+		// diese Berechnung setzt voraus, dass das Zielquad, an dem appliziert
+		// wird, ein rechteckiges Quad senkrecht zur XZ-Ebene ist (also eine
+		// "normale" Wand
+		switch (vertAlignment) {
+		// Anbringung an Oberkante, obere Ecke Profile mit Start des vertikalen
+		// Strahls
+		case TOP:
+			anchorWall = vertRay.getStart();
+			anchorProfile = fittingEdge.getStart();
+			break;
+		// Mittelpunkt der Quad-Kante, obere Ecke des Profils
+		case MIDDLE:
+			MyVector3f direction = vertRay.getDirection();
+			direction.scale(0.5f);
+			anchorWall = new MyVector3f();
+			anchorWall.add(vertRay.getStartPtr(), direction);
+			anchorProfile = fittingEdge.getStart();
+			break;
+		// Ende vertRay mit Ende Profile
+		case BOTTOM:
+			anchorWall = vertRay.getEnd();
+			anchorProfile = fittingEdge.getEnd();
+			break;
+		}
+
+		final MyVector3f translation = new MyVector3f();
+		translation.sub(anchorWall, anchorProfile);
+		LOGGER.debug("Translation: " + translation);
+
+		// verschieben des Profils
+		poly.translate(translation);
+
+		// Quadray zurueckgeben, wird noch weiterverwendet
+		return currentMinRay;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mScaledProfileLength
+	 */
+	public Float getScaledProfileLength() {
+		return mScaledProfileLength;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Wenn das Zielpolygon in seiner Ausrichtung nicht senkrecht zur XZ-Ebene
+	 * steht, muss es vorverarbeitet werden, so dass diese Vorbedingung erfuellt
+	 * ist
+	 */
+	private void alignTargetPolygon() {
+		final MyVectormath mathHelper = MyVectormath.getInstance();
+
+		// bestimme den maximalen y-Wert
+		float maxY = -Float.MAX_VALUE;
+		Vertex3d maxVert = null;
+		for (Vertex3d curVert : mTargetPolygon.getVertices()) {
+			if (curVert.getY() > maxY) {
+				maxY = curVert.getY();
+				maxVert = curVert;
+			}
+		}
+
+		// erzeuge eine Ebene parallel zur XZ-Ebene mit der berechneten Hoehe
+		final Plane xz = new Plane(new MyVector3f(0.0f, 1.0f, 0.0f),
+				new MyVector3f(0.0f, maxY, 0.0f));
+
+		// Schnittgerade berechnen => dient als Rotationsachse
+		final MyVector3f schnittgerade = mathHelper
+				.calculatePlane2PlaneIntersectionDirection(
+						mTargetPolygon.getPlane(), xz);
+
+		// berechne den Winkel
+		double angle = mathHelper.calculateAngleRadians(xz.getNormalPtr(),
+				mTargetPolygon.getNormalPtr());
+		angle %= (Math.PI / 2);
+
+		// rotiere das Polygon
+		mathHelper.rotatePolygonAroundArbitraryAxis(
+				new Ray(maxVert.getPosition(), schnittgerade), mTargetPolygon,
+				angle);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

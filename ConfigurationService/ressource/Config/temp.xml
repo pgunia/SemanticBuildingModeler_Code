@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+    
+<objectplacement xmlns="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Objectplacement"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:op="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Objectplacement"
+    xmlns:ct="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/CommonTypes"
+    xsi:schemaLocation="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Objectplacement http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/Objectplacement/ObjectplacementSchema.xsd">
+    <op:PlacementScalingSubcomponents>
+        <ct:lowerBorder>0.6</ct:lowerBorder>
+        <ct:upperBorder>0.9</ct:upperBorder>
+    </op:PlacementScalingSubcomponents>
+    <op:PlacementScalingMaincomponents>
+        <ct:lowerBorder>0.4</ct:lowerBorder>
+        <ct:upperBorder>0.7</ct:upperBorder>
+    </op:PlacementScalingMaincomponents>
+    <op:MinNumberOfFreeBlocks>3</op:MinNumberOfFreeBlocks>
+    <op:MaxNumberOfSubcomponentsPerRay>1</op:MaxNumberOfSubcomponentsPerRay>
+    <op:MinSubcomponentSizeInBlocks>4</op:MinSubcomponentSizeInBlocks>
+    <op:AllowedSubcomponentTypes>
+        <op:type>RectComponent</op:type>
+        <op:type>CylindricComponent</op:type>
+    </op:AllowedSubcomponentTypes>
+    <op:MaxCornerMainComponentDimensionsRatio>0.4</op:MaxCornerMainComponentDimensionsRatio>
+    <op:MaxNumberOfRetriesPerRay>10</op:MaxNumberOfRetriesPerRay>
+
+    <op:HeightWidthRatioComponents>
+        <ct:lowerBorder>0.4</ct:lowerBorder>
+        <ct:upperBorder>0.8</ct:upperBorder>
+    </op:HeightWidthRatioComponents>
+    <op:NumberOfIterations>1</op:NumberOfIterations>
+
+    <op:MinMainToSubcomponentDeviance>0.07</op:MinMainToSubcomponentDeviance>
+    <op:placementProbability>
+        <op:Symmetry>0.2</op:Symmetry>
+        <op:PositionSubComponentsOnCorners>0.4</op:PositionSubComponentsOnCorners>
+        <op:PositionCylinders>0.3</op:PositionCylinders>
+        <op:PositionComponentsOnEdge>0.6</op:PositionComponentsOnEdge>
+        <op:PositionOnCenter>0.4</op:PositionOnCenter>
+        <op:ConvexHull>0.3</op:ConvexHull>
+    </op:placementProbability>
+    <MaxSubMainComponentWidthRatio>1.0E2</MaxSubMainComponentWidthRatio>
+</objectplacement>

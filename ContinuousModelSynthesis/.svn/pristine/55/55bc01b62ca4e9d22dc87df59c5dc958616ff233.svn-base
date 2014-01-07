@@ -1,0 +1,838 @@
+import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+
+import math.MyPolygon;
+import math.MyVector3f;
+import math.Ray;
+import math.Vertex3d;
+
+import org.apache.log4j.Logger;
+
+import processing.core.PApplet;
+import processing.core.PConstants;
+import processing.core.PFont;
+import semantic.city.builder.configurationservice.controller.ConfigurationController;
+import semantic.city.builder.configurationservice.model.ExampleBasedFootprintConfiguration;
+import semantic.city.builder.configurationservice.model.enums.RuleType;
+import semantic.city.builder.modelsynthesis.controller.ModelSynthesisController;
+import semantic.city.builder.modelsynthesis.model.Face;
+import semantic.city.builder.modelsynthesis.model.FacePosition;
+import semantic.city.builder.modelsynthesis.model.RayWrapper;
+import semantic.city.builder.modelsynthesis.model.State;
+import semantic.city.builder.modelsynthesis.model.VertexWrapper;
+
+
+/**
+ * 
+ * @author Patrick Gunia
+ * Appletklasse fuer die Darstellungen der Berechnungsergebnisse der Model Synthese
+ *
+ */
+
+public class ContinuousModelSynthesisApplet extends PApplet {
+	
+	/** Logging-Instanz */
+	protected final static Logger LOGGER = Logger.getLogger("modelsynthesis.controller.modelsynthesiscontroller");
+
+	/** Steuerung fuer Mausrotation */
+	private transient float dragRotateX, dragRotateY, dragDelta, dragLastPosX, dragLastPosY, dragTreshold;
+	
+	/** Liste mit allen parallelen Strahlen fuer das Eingabepolygon */
+	private transient List<RayWrapper> parallelRays = null;
+	
+	/** Alle berechneten Vertices */
+	private transient List<VertexWrapper> mVertices = null;
+	
+	/** Ausgangspolygon fuer Modelsynthese */
+	private transient MyPolygon mInputPoly = null;
+	
+	/** Berechnete Faces */
+	private transient List<Face> mFaces = null;
+	
+	/** Liniensegmente basierend auf den Schnittpunkten */
+	private transient List<RayWrapper> mRays = null;
+	
+	/** Map speichert zufallsbasierte Farbwerte fuer die einzelnen Strahlen des Eingabemodells*/
+	private transient Map<String, Integer[]> mRayToColorMap = null;
+	
+	/** Sollen dei Schnittpunkte gezeichnet werden? */
+	private final transient boolean drawVertices = false;
+	
+	/** Sollen die Faces gezeichnet werden? */
+	private transient boolean drawFaces = false;
+	
+	/** Sollen das Input-Polygon gezeichnet werden? */
+	private transient boolean drawInput = true;
+	
+	/** Sollen die parallelen Strahlen gezeichnet werden? */
+	private final transient boolean drawParallelLines = true;
+	
+	/** Sollen die Startvertices der parallelen Strahlen gezeichnet werden, um die Richtung erkennen zu koennen? */
+	private final transient boolean drawParallelLinesStartPoints = false;
+	
+	/** Sollen die Startvertices der parallelen Strahlen gezeichnet werden, um die Richtung erkennen zu koennen? */
+	private final transient boolean drawLineSegments = false;
+	
+	/** Index des Polygons, das gezeichnet werden soll */
+	private transient int polyToDraw = 0;
+	
+	/** Sollen immer nur einzelne Faces basierend auf Nutzereingabe gezeichnet werden? */
+	private transient boolean drawSingleFace = false;
+	
+	/** Schriftobjekt, mit dem Informationen in die Polygone geschrieben werden koennen*/
+	private transient final PFont myFont = createFont("sans-serif", 15);
+	
+	/** Schriftobjekt, mit dem Informationen in die Polygone geschrieben werden koennen*/
+	private transient final PFont myFontBig = createFont("sans-serif", 70);
+	
+	/** Fuer jeden Strahl werden die beiden adjazenten Faces dieses Strahls gezeichnet */
+	private transient boolean drawRays = false;
+	
+	/** Welcher Strahl soll gezeichnet werden? */
+	private transient int rayToDraw = 0;
+	
+	/** ID des Vertex, das gezeichnet werden soll */
+	private transient int vertexToDraw = 0;
+	
+	/** Zeichne das i-te Vertex in der Liste */
+	private transient boolean drawSingleVertex = false;
+	
+	/** Sollen die Ergebnisse der Modelsynthese gezeichnet werden? */
+	private transient boolean drawResult = true;
+	
+	/** Algorithmus */
+	private ModelSynthesisController synthesisController = null;
+	
+	/** Sollen Vertex-IDs gezeichnet werden? */
+	private transient boolean drawVertexIDs = false;
+	
+	/** Sollen die Face-IDs gezeichnet werden? */
+	private transient boolean drawFaceIDs = false;
+	
+	/** Sollen die Strahlen-IDs gezeichnet werden? */
+	private transient boolean drawRayIDs = false;
+	
+	/** Sollen Strahlen ausgehend von den Vertices gezeichnet werden? In diesem Fall werden fuer jedes Vertex alle aus diesem ausgehenden Strahlen gezeichnet */
+	private transient boolean drawVertexRays = false;
+	
+	/** Frame-Counter */
+	private transient int curFrame = 0;
+	
+	/** Anzahl Frames, nach der naechste Berechnungsschritt initialisiziert wird */
+	private transient int maxFrame = 120;
+	
+	/** Liste mit den Footprintpolygonen, die durch den Synthesealgorithmus berechnet wurden */
+	private transient List<MyPolygon> footprints = null;
+	
+	/** Sollen die berechneten Grundrisse gezeichnet werden? */
+	private transient boolean drawResultFootprints = true;
+	
+	/** Zaehler fuer die Anzahl durchgefuehrter Syntheseschritte */
+	private transient Integer numberOfSteps = 0;
+	
+	/** Wieviele Schritte sollen maximale durchgefuehrt werden */
+	private transient Integer maxNumberOfSteps = Integer.MAX_VALUE;
+	
+	// ------------------------------------------------------------------------------------------
+
+
+	@Override
+	public void setup() {
+	
+		
+		dragRotateX = 0.0f;
+		dragRotateY = 0.0f;
+		dragLastPosX = 0.0f;
+		dragLastPosY = 0.0f;
+		dragTreshold = 0.05f;
+		dragDelta = 0.05f;
+
+		// only works with OPENGL
+		size(1400, 1000, OPENGL);
+		
+		// verwende eine orthographisce Projektion
+		// ortho();
+		
+		// Anti-Aliasing verwenden
+		// smooth();
+		
+		
+		
+		MyVector3f eyePos = new MyVector3f(1500.0f,500.0f,600.0f);
+//		MyVector3f eyePos = new MyVector3f(1500.0f,491.0f,600.0f);
+
+		
+		MyVector3f sceneCenter = new MyVector3f(1500.0,490.0f,600.0f);
+
+		/*
+		MyVector3f eyePos = new MyVector3f(0.0f, 0.0f, 0.0f);
+		MyVector3f sceneCenter =  new MyVector3f(0.0f, 0.0f, 0.0f);
+		*/
+		MyVector3f cameraUp = new MyVector3f(0.0f, 0.0f, 1.0f);
+//		camera(eyePos.x, eyePos.y, eyePos.z, sceneCenter.x, sceneCenter.y, sceneCenter.z, cameraUp.x, cameraUp.y, cameraUp.z);
+
+		List<Vertex3d> vertices = new ArrayList<Vertex3d>(4);
+		
+		// Dreieck
+		/*
+		vertices.add(new Vertex3d(300.0f, 500.0f, 0.0f));
+		vertices.add(new Vertex3d(500.0f, 500.0f, 0.0f));
+		vertices.add(new Vertex3d(300.0f, 500.0f, 100.0f));
+		*/
+		
+		/*
+		vertices.add(new Vertex3d(300.0f, 500.0f, 0.0f));
+		vertices.add(new Vertex3d(500.0f, 500.0f, 0.0f));
+		vertices.add(new Vertex3d(300.0f, 500.0f, 100.0f));
+		vertices.add(new Vertex3d(250.0f, 500.0f, 74.0f));
+		*/
+	
+		/*
+		vertices.add(new Vertex3d(400.0f, 500.0f, 0.0f));
+		vertices.add(new Vertex3d(1000.0f, 500.0f, 0.0f));
+		vertices.add(new Vertex3d(1000.0f, 500.0f, 400.0f));
+		vertices.add(new Vertex3d(800.0f, 500.0f, 400.0f));
+		vertices.add(new Vertex3d(800.0f, 500.0f, 500.0f));
+		vertices.add(new Vertex3d(600.0f, 500.0f, 500.0f));
+		vertices.add(new Vertex3d(600.0f, 500.0f, 400.0f));
+		vertices.add(new Vertex3d(400.0f, 500.0f, 400.0f));
+		*/
+		
+		/*
+		// Grundrissbeispiel Splitevent
+		vertices.add(new Vertex3d(250.0f,500.0f,-100.0f));
+		vertices.add(new Vertex3d(550.0f,500.0f,-100.0f));
+		vertices.add(new Vertex3d(550.0f,500.0f,80.0f));
+		vertices.add(new Vertex3d(650.0f,500.0f,80.0f));
+		vertices.add(new Vertex3d(650.0f,500.0f,180.0f));
+		vertices.add(new Vertex3d(450.0f,500.0f,180.0f));
+		vertices.add(new Vertex3d(450.0f,500.0f,100.0f));
+		vertices.add(new Vertex3d(250.0f,500.0f,100.0f));
+		
+		MyVector3f translation = new MyVector3f(200.0f, 0.0f, 50.0f);
+		for(int i = 0; i < vertices.size(); i++) {
+			vertices.get(i).getPositionPtr().add(translation);
+		}
+		*/
+/*
+		vertices.add(new Vertex3d(-156.0555f, 200.0f,  0.0f));
+		vertices.add(new Vertex3d(-153.2196f, 200.0f,  14.0269f));
+		vertices.add(new Vertex3d(-145.4884f, 200.0f,  25.4884f));
+		vertices.add(new Vertex3d(-134.0269f, 200.0f,  33.2196f));
+		vertices.add(new Vertex3d(-120.0f,  200.0f,  36.0555f));
+		vertices.add(new Vertex3d(-120.0f,  200.0f,  90.0f));
+		vertices.add(new Vertex3d(-10.0f,  200.0f,  90.0f));
+		vertices.add(new Vertex3d(-10.0f,  200.0f,  -90.0f));
+		vertices.add(new Vertex3d(-120.0f,  200.0f,  -90.0f));
+		vertices.add(new Vertex3d(-120.0f,  200.0f,  -36.0555f));
+		vertices.add(new Vertex3d(-134.0269f, 200.0f,  -33.2196f));
+		vertices.add(new Vertex3d(-145.4884f, 200.0f,  -25.4884f));
+		vertices.add(new Vertex3d(-153.2196f, 200.0f,  -14.0268f));
+		MyVector3f translation = new MyVector3f(350.0f, 300.0f, 0.0f);
+		for(int i = 0; i < vertices.size(); i++) {
+			vertices.get(i).getPositionPtr().add(translation);
+		}
+*/	
+		// eine Seite schraeg
+		/*
+		vertices.add(new Vertex3d(400.0f, 500.0f, 0.0f));
+		vertices.add(new Vertex3d(1000.0f, 500.0f, 0.0f));
+		vertices.add(new Vertex3d(1000.0f, 500.0f, 400.0f));
+		vertices.add(new Vertex3d(800.0f, 500.0f, 400.0f));
+		vertices.add(new Vertex3d(800.0f, 500.0f, 500.0f));
+		vertices.add(new Vertex3d(600.0f, 500.0f, 500.0f));
+		vertices.add(new Vertex3d(600.0f, 500.0f, 380.0f));
+		*/
+		
+		/*
+		vertices.add(new Vertex3d(300.0f, 500.0f, 0.0f));
+		vertices.add(new Vertex3d(700.0f, 500.0f, 0.0f));
+		vertices.add(new Vertex3d(700.0f, 500.0f, 200.0f));
+		vertices.add(new Vertex3d(550.0f, 500.0f, 200.0f));
+		vertices.add(new Vertex3d(550.0f, 500.0f, 250.0f));
+		vertices.add(new Vertex3d(300.0f, 500.0f, 250.0f));
+		*/
+		
+		
+		// Einfaches Quadrat
+		vertices.add(new Vertex3d(300.0f, 500.0f, 0.0f));
+		vertices.add(new Vertex3d(700.0f, 500.0f, 0.0f));
+		vertices.add(new Vertex3d(700.0f, 500.0f, 200.0f));
+		vertices.add(new Vertex3d(300.0f, 500.0f, 200.0f));
+		MyVector3f translation = new MyVector3f(200.0f, 0.0f, 50.0f);
+
+		for(int i = 0; i < vertices.size(); i++) {
+			vertices.get(i).getPositionPtr().add(translation);
+		}
+		
+	/*
+		vertices.add(new Vertex3d(300.0f, 500.0f, 0.0f));
+		vertices.add(new Vertex3d(700.0f, 500.0f, 10.0f));
+		vertices.add(new Vertex3d(700.0f, 500.0f, 195.0f));
+		vertices.add(new Vertex3d(550.0f, 500.0f, 205.0f));
+		vertices.add(new Vertex3d(555.0f, 500.0f, 250.0f));
+		vertices.add(new Vertex3d(300.0f, 500.0f, 255.0f));
+	*/	
+		
+		
+		mInputPoly = new MyPolygon(vertices);
+		mInputPoly.scale(1.0f);
+		
+		/*
+		File xmlConfiguration = new File("ressource/Config/BuildingExample.xml");
+		assert xmlConfiguration.exists(): "FEHLER: Konfigurationsdatei wurde nicht gefunden!";
+		*/
+		ConfigurationController confController = new ConfigurationController();
+		File configuration = confController.loadFromURL("http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/XML/ExampleBasedConfig/ExampleBasedSynthesis.xml", "Config/ExampleBasedSynthesis.xml");
+		ExampleBasedFootprintConfiguration synthesisConf = confController.processsExampleBasedFootprintConfiguration(configuration);
+		assert synthesisConf != null: "FEHLER: Es wurde kein Konfigurationsobjekt fuer die Modelsynthese geladen!";
+		
+		// Polygon in der Config speichern => fuer Testing
+		synthesisConf.setExamplePoly(mInputPoly);
+		
+		synthesisController = new ModelSynthesisController(mInputPoly, synthesisConf);
+		List<RayWrapper> inputRays = synthesisController.getInputRays();
+		
+		
+		parallelRays = synthesisController.getParallelRays();
+		mVertices = synthesisController.getVertices();
+		mFaces = synthesisController.getFaces();
+		
+		
+		// drawStats();
+ 	
+		mRays = synthesisController.getRays();
+		mRays.remove(parallelRays);
+		footprints = synthesisController.getResultFootprints();
+
+		// erzeuge zufallsbasierte Farbwerte fuer alle Strahlen des
+		// Eingabeobjekts => dadurch koennen die Strahlen einheitlich0 
+		// dargestellt werden
+		Set<String> labels = synthesisController.getLabels();
+		mRayToColorMap = new HashMap<String, Integer[]>(
+				labels.size());
+		
+		final Random rand = new Random();
+		Iterator<String> labelIter = labels.iterator();
+		String curLabel = null;
+		while(labelIter.hasNext()) {
+			curLabel = labelIter.next();
+			Integer[] colorRGB = new Integer[3];
+			colorRGB[0] = rand.nextInt(256);
+			colorRGB[1] = rand.nextInt(256);
+			colorRGB[2] = rand.nextInt(256);
+			mRayToColorMap.put(curLabel, colorRGB);
+		}
+	}
+
+	
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void draw() {
+		
+	/*
+		if(numberOfSteps < maxNumberOfSteps) {
+			if((curFrame % maxFrame) == 0) {
+				this.synthesisController.nextStep();
+				numberOfSteps++;
+				curFrame = 0;
+			}
+			else curFrame++;
+		}
+ 		*/
+	
+		rotateX(-dragRotateY);
+		rotateY(dragRotateX);
+		
+		background(255,255,255);
+		noFill();
+	
+		// zeichne das Inputpoly
+		List<Vertex3d> inputPolyPoints = mInputPoly.getVertices();
+		final int size = inputPolyPoints.size();
+		Vertex3d currentVertex = null;
+
+		if(drawInput) {
+			fill(0,150,0, 100);
+			beginShape(PConstants.POLYGON);
+			for(int i = 0; i < size; i++) {
+				currentVertex = inputPolyPoints.get(i);
+				vertex(currentVertex.getX(), currentVertex.getY(),
+						currentVertex.getZ());
+			}
+
+			endShape(PConstants.CLOSE);
+			noFill();
+		}
+		
+		
+		if(drawParallelLines) {
+			// parallelele Strahlen zeichnen
+			final int numberOfRays = parallelRays.size();
+			Ray currentRay = null;
+			RayWrapper currentWrappedRay = null;
+			MyVector3f currentStart = null, currentEnd = null;
+			Integer[] rgb = null;
+			
+			beginShape(PConstants.LINE);
+			for(int i = 0; i < numberOfRays; i++) {
+				currentWrappedRay = parallelRays.get(i);
+				currentRay = currentWrappedRay.getRay();
+				currentRay = parallelRays.get(i).getRay();
+				currentStart = currentRay.getStartPtr();
+				// rgb = mRayToColorMap.get(currentWrappedRay.getParentRay());
+				/*
+				if(rgb != null) stroke(rgb[0], rgb[1], rgb[2]);
+				else stroke(255.0f, 0.0f, 0.0f);
+				*/
+				stroke(0);
+				vertex(currentStart.x, currentStart.y - 1.0f,
+						currentStart.z);
+				currentEnd = currentRay.getEndPtr();
+				vertex(currentEnd.x, currentEnd.y - 1.0f,
+						currentEnd.z);
+			}
+			endShape();
+		}
+		
+		
+		
+		if(drawVertices) {
+			MyVector3f currentVertPos = null;
+			stroke(255.0f, 0.0f, 0.0f);
+			for(int i = 0; i < mVertices.size(); i++) {
+				currentVertPos = mVertices.get(i).getVertex().getPositionPtr();
+				pushMatrix();
+				translate(currentVertPos.x, currentVertPos.y, currentVertPos.z);
+				sphere(2);
+				popMatrix();
+			}
+		}
+
+		
+		// zeichne die Vertices
+		if(drawParallelLinesStartPoints) {
+			stroke(255.0f, 0.0f, 0.0f);
+			MyVector3f currentVertPos = null;
+			for(int i = 0; i < parallelRays.size(); i++) {
+				currentVertPos = parallelRays.get(i).getRay().getStartPtr();
+				pushMatrix();
+				translate(currentVertPos.x, currentVertPos.y, currentVertPos.z);
+				sphere(2);
+				popMatrix();
+			}
+		}
+		
+		if(drawFaces) {
+			fill(0,0,255,100);
+			stroke(0);
+			List<Vertex3d> vertices = null;
+			for(int i = 0; i < mFaces.size(); i++) {
+				vertices = mFaces.get(i).getFacePoly().getVertices();
+				
+				beginShape();
+				for(int j = 0; j < vertices.size(); j++) {
+					currentVertex = vertices.get(j);
+				
+					vertex(currentVertex.getX(), currentVertex.getY(),
+							currentVertex.getZ());
+				}
+				endShape(PConstants.CLOSE);
+			}
+			noFill();
+		}
+		
+		if(drawFaceIDs) {
+			stroke(0);
+			fill(0);
+			MyVector3f center = null;
+			for(int i = 0; i < mFaces.size(); i++) {
+				
+				center = mFaces.get(i).getFacePoly().getCenter();
+				pushMatrix();
+				// translate(center.getX(), center.getY(), center.getZ());
+				textFont(myFont);
+				text(mFaces.get(i).getID(), center.x, center.y, center.z);
+				// sphere(2);
+				popMatrix();
+			}
+			noFill();
+		}
+		
+		if(drawVertexIDs) {
+			stroke(0);
+			fill(0);
+			MyVector3f pos = null;
+			for(int i = 0; i < mVertices.size(); i++) {
+				
+				pos = mVertices.get(i).getVertex().getPositionPtr();
+				pushMatrix();
+				// translate(center.getX(), center.getY(), center.getZ());
+				textFont(myFont);
+				text(mVertices.get(i).getID(), pos.x, pos.y, pos.z);
+				// sphere(2);
+				popMatrix();
+			}
+			noFill();
+		}
+		
+		
+		if (drawSingleFace) {
+			fill(0,0,255,100);
+			stroke(0);
+			List<Vertex3d> vertices = null;
+			vertices = mFaces.get(polyToDraw).getFacePoly().getVertices();
+
+			beginShape();
+			for (int j = 0; j < vertices.size(); j++) {
+				currentVertex = vertices.get(j);
+
+				vertex(currentVertex.getX(), currentVertex.getY(),
+						currentVertex.getZ());
+			}
+			endShape(PConstants.CLOSE);
+			
+			MyVector3f polyCenter = mFaces.get(polyToDraw).getFacePoly().getCenter();
+			Integer faceID = mFaces.get(polyToDraw).getID();
+			textFont(myFontBig);
+			text(faceID, polyCenter.x, polyCenter.y, polyCenter.z);
+			beginShape();
+			pushMatrix();
+			translate(polyCenter.x, polyCenter.y, polyCenter.z);
+			sphere(2);
+			popMatrix();
+			
+
+			noFill();
+		}
+		
+		if (drawSingleVertex) {
+			fill(0);
+			stroke(0);
+			VertexWrapper vertex = mVertices.get(vertexToDraw);
+			MyVector3f pos = vertex.getVertex().getPositionPtr();
+			
+			textFont(myFontBig);
+			text(mVertices.get(vertexToDraw).getID(), pos.x, pos.y, pos.z);
+			beginShape();
+			pushMatrix();
+			translate(pos.x, pos.y, pos.z);
+			sphere(2);
+			popMatrix();
+			
+			endShape(PConstants.CLOSE);
+
+			noFill();
+		}
+		
+		
+		if(drawLineSegments) {
+			strokeWeight(1);
+			// parallelele Strahlen zeichnen
+			final int numberOfRays = mRays.size();
+			RayWrapper currentRay = null;
+			MyVector3f currentStart = null, currentEnd = null;
+			Integer[] color = null;
+			beginShape(PConstants.LINE);
+			for(int i = 0; i < numberOfRays; i++) {
+				currentRay = mRays.get(i);
+				color = mRayToColorMap.get(currentRay.getLabel());
+				/*
+				if(color == null) stroke(0);
+				else stroke(color[0], color[1], color[2]);
+				*/
+				stroke(0);
+				currentStart = currentRay.getRay().getStartPtr();
+				vertex(currentStart.x, currentStart.y - 1.0f,
+						currentStart.z);
+				currentEnd = currentRay.getRay().getEndPtr();
+				vertex(currentEnd.x, currentEnd.y - 1.0f,
+						currentEnd.z);
+			}
+			endShape();
+			strokeWeight(1);
+		}
+		
+		if(drawRays) {
+			
+			
+			RayWrapper curRay = mRays.get(rayToDraw);
+			
+			// Start- und Endpunkt des Strahls zeichnen
+			MyVector3f start = curRay.getStartVert().getVertex().getPositionPtr();
+			stroke(255,0,0);
+			pushMatrix();
+			translate(start.x, start.y, start.z);
+			sphere(5);
+			popMatrix();
+			
+			MyVector3f end = curRay.getEndVert().getVertex().getPositionPtr();
+			stroke(0,255,0);
+			pushMatrix();
+			translate(end.x, end.y, end.z);
+			sphere(5);
+			popMatrix();
+			
+			Face left = curRay.getFace(FacePosition.UPPER);
+			if(left != null) {
+				List<Vertex3d> leftVerts = left.getFacePoly().getVertices();
+				Vertex3d curVert = null;
+				
+				// linkes Face zeichnen
+				fill(255,0,0,100);
+				beginShape();
+				for(int i = 0; i < leftVerts.size(); i++) {
+					curVert = leftVerts.get(i);
+					vertex(curVert.getX(), curVert.getY(),
+							curVert.getZ());
+				}
+				endShape(PConstants.CLOSE);
+				noFill();
+			}
+			
+			Face right = curRay.getFace(FacePosition.LOWER);
+			if(right != null) {
+				List<Vertex3d> rightVerts = right.getFacePoly().getVertices();
+				Vertex3d curVert = null;
+				
+				// rechtes Face zeichnen
+				fill(0,255,0,100);
+				beginShape();
+				for(int i = 0; i < rightVerts.size(); i++) {
+					curVert = rightVerts.get(i);
+					vertex(curVert.getX(), curVert.getY(),
+							curVert.getZ());
+				}
+				endShape(PConstants.CLOSE);
+				noFill();
+			}
+			
+		}
+		
+		if(drawResult) {
+			
+			// Zeichne alle Faces, deren State auf INTERIOR steht
+			Face curFace = null;
+			float alpha = 100.0f;
+			float[] black = {0.0f, 0.0f, 0.0f};
+			float[] lightRed = {255.0f, 0.0f, 100.0f};
+			
+			for(int i = 0; i < mFaces.size(); i++) {
+				curFace = mFaces.get(i);
+				
+				List<Vertex3d> leftVerts = curFace.getFacePoly().getVertices();
+				Vertex3d curVert = null;
+				
+				// linkes Face zeichnen
+				/*
+				if(curFace.getState() != State.INTERIOR) fill(black[0], black[1], black[2]);
+				else 
+				*/
+				if(curFace.getState() == State.INTERIOR) fill(lightRed[0], lightRed[1], lightRed[2], alpha);
+				else if(curFace.getState() == State.EXTERIOR) fill(black[0], black[1], black[2], alpha);
+				else continue;
+				beginShape();
+				for(int j = 0; j < leftVerts.size(); j++) {
+					curVert = leftVerts.get(j);
+					vertex(curVert.getX(), curVert.getY(),
+							curVert.getZ());
+				}
+				endShape(PConstants.CLOSE);
+				noFill();
+			}
+		}
+		
+		if(drawVertexRays) {
+			VertexWrapper curVert = null, curStart = null, curEnd = null;
+			RayWrapper curRay = null;
+			MyVector3f curPos = null;
+			stroke(0);
+			for(int i = 0; i < mVertices.size(); i++) {
+				curVert = mVertices.get(i);
+				List<RayWrapper> startRays = curVert.getStartRays();
+				for(int j = 0; j < startRays.size(); j++) {
+					curRay = startRays.get(j);
+					curStart = curRay.getStartVert();
+					curEnd = curRay.getEndVert();
+					
+					beginShape(PConstants.LINE);
+					curPos = curStart.getVertex().getPositionPtr();
+					vertex(curPos.x, curPos.y, curPos.z);
+					curPos = curEnd.getVertex().getPositionPtr();
+					vertex(curPos.x, curPos.y, curPos.z);
+					endShape();
+				}
+			}
+		}
+		
+		if(drawRayIDs) {
+			
+			RayWrapper curRay = null;
+			MyVector3f center = null;
+			stroke(255, 0, 0);
+			fill(0);
+			for(int i = 0; i < mRays.size(); i++) {
+				curRay = mRays.get(i);
+				center = curRay.getRay().getCenter();
+				pushMatrix();
+				// translate(center.getX(), center.getY(), center.getZ());
+				textFont(myFont);
+				text(curRay.getID(), center.x, center.y, center.z);
+				// sphere(2);
+				popMatrix();
+			}
+		}
+		
+		if(drawResultFootprints) {
+			stroke(0);
+			strokeWeight(2);
+			fill(0,0,200,150);
+			List<Vertex3d> footprintVerts = null;
+			for(int i = 0; i < footprints.size(); i++) {
+				footprintVerts = footprints.get(i).getVertices();
+				
+				beginShape();
+				for(int j = 0; j < footprintVerts.size(); j++) {
+					currentVertex = footprintVerts.get(j);
+				
+					vertex(currentVertex.getX(), currentVertex.getY(),
+							currentVertex.getZ());
+				}
+				endShape(PConstants.CLOSE);
+			}
+			noFill();
+			strokeWeight(1);
+		}
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * benutze das Mouse-Dragging fuer die Rotation der Geometrie
+	 */
+	@Override
+	public void mouseDragged() {
+		if(dragLastPosX > mouseX + dragTreshold) {
+			dragRotateX += dragDelta;
+		}
+		else if(dragLastPosX < mouseX - dragTreshold) {
+			dragRotateX -= dragDelta;
+		}
+		
+		// normalisiere auf Bereich 0-360°
+		if(dragRotateX > 720.0f || dragRotateX < -360.0f) dragRotateX = 0.0f;
+		
+		if(dragLastPosY > mouseY + dragTreshold) {
+			dragRotateY += dragDelta;
+		}
+		else if(dragLastPosX < mouseY - dragTreshold) {
+			dragRotateY -= dragDelta;
+		}
+		
+		if(dragRotateY > 720.0f || dragRotateY < -360.0f) dragRotateY = 0.0f;
+		
+		// speichere Positionen des aktuellen Frames
+		dragLastPosX = mouseX;
+		dragLastPosY = mouseY;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode gibt Informationen ueber den bisherigen Verlauf der Grundrisserzeugung aus
+	 */
+	private void drawStats() {
+		
+		Map<RuleType, Integer> ruleApplications = synthesisController.getRuleSynthesisCounter();
+		Iterator<RuleType> applicationIter = ruleApplications.keySet().iterator();
+		RuleType curRule = null;
+		while(applicationIter.hasNext()) {
+			curRule = applicationIter.next();
+			LOGGER.info(curRule + ": " + ruleApplications.get(curRule));
+		}
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public void keyPressed() {
+		
+		switch(key) {
+		
+			case 'n':
+				polyToDraw++;
+				polyToDraw %= mFaces.size();
+				LOGGER.info("New Poly to Draw: " + polyToDraw);
+				break;
+			case 'a':
+				if(this.drawFaces) {
+					this.drawSingleFace = true;
+					this.drawFaces = false;
+				}
+				else {
+					this.drawFaces = true;
+					this.drawSingleFace = false;
+				}
+				break;
+				
+			case 'r':
+				if(drawRays) drawRays = false;
+				else drawRays = true;
+				break;
+			
+			case 't':
+				rayToDraw++;
+				rayToDraw %= mRays.size();
+				LOGGER.info("New Ray to Draw: " + rayToDraw);
+				break;
+				
+			case 'q':
+				if(drawResult) drawResult = false;
+				else drawResult = true;
+				break;
+				
+			case 's':
+				this.synthesisController.nextStep();
+				break;
+				
+			case 'v':
+				if(drawVertexIDs) drawVertexIDs = false;
+				else drawVertexIDs = true;
+				break;
+				
+			case 'f':
+				if(drawFaceIDs) drawFaceIDs = false;
+				else drawFaceIDs = true;
+				break;
+			
+			case 'z':
+				if(drawRayIDs) drawRayIDs = false;
+				else drawRayIDs = true;
+				break;
+			
+			case 'p':
+				if(drawSingleVertex) drawSingleVertex = false;
+				else drawSingleVertex = true;
+				break;
+				
+			case 'l':
+				vertexToDraw = (vertexToDraw + 1) % mVertices.size();
+				LOGGER.info("Vertex to Draw: " + vertexToDraw);
+				break;
+				
+			case 'i':
+				if(drawInput) drawInput = false;
+				else drawInput = true;
+				break;
+				
+			case 'w':
+				drawStats();
+				break;
+ 		}	
+	}
+}

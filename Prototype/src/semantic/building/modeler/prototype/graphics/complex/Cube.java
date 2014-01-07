@@ -1,0 +1,504 @@
+package semantic.building.modeler.prototype.graphics.complex;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+import processing.core.PApplet;
+import semantic.building.modeler.configurationservice.model.enums.Side;
+import semantic.building.modeler.math.Axis;
+import semantic.building.modeler.math.MyPolygon;
+import semantic.building.modeler.math.MyVector3f;
+import semantic.building.modeler.math.Vertex3d;
+import semantic.building.modeler.prototype.enums.subdivisionType;
+import semantic.building.modeler.prototype.exception.PrototypeException;
+import semantic.building.modeler.prototype.graphics.interfaces.iGraphicComplex;
+import semantic.building.modeler.prototype.graphics.primitives.AbstractQuad;
+
+public class Cube extends AbstractComplex {
+
+	/** Breite / Tiefe des Quaders */
+	private Float mWidth = null, mDepth = null;
+
+	/** Farbvariation bei den zu zeichnenden Flaechenelementen */
+	private Float drawColorMod = null;
+
+	// ------------------------------------------------------------------------------------------
+
+	public Cube(PApplet parent, Float width, Float height, Float depth) {
+		super(parent, height);
+
+		mWidth = width;
+		mDepth = depth;
+
+		// standard Vertexanzahl für Quader
+		int numberOfVertices = 8;
+
+		// Vertex-Array initialisierten
+		mVertices = new ArrayList<Vertex3d>(numberOfVertices);
+
+		// Quad-Array initialisieren
+		mOutdoorQuads = new ArrayList<AbstractQuad>(8);
+
+		// waehle zufaellig eine Farbe aus, normalisiert auf 0...255
+		drawColorMod = mParent.random(0.0f, 2.55f);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/** leerer Default-Konstruktor, dient nur der Initialisierung */
+	public Cube() {
+		super();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public void create() {
+
+		// definiere die Bodenflaeche des Quads als Polyongzug
+		List<Vertex3d> footprintVerts = new ArrayList<Vertex3d>(4);
+
+		// erstelle den Wuerfel in der XZ-Ebene im Ursprung des
+		// Koordinatensystems
+		float halfWidth = mWidth / 2;
+		float halfDepth = mDepth / 2;
+
+		Vertex3d currentVert = null;
+
+		// vorne links
+		currentVert = new Vertex3d(-halfWidth, 0.0f, halfDepth);
+		footprintVerts.add(currentVert);
+
+		// hinten links
+		currentVert = new Vertex3d(-halfWidth, 0.0f, -halfDepth);
+		footprintVerts.add(currentVert);
+
+		// hinten rechts
+		currentVert = new Vertex3d(halfWidth, 0.0f, -halfDepth);
+		footprintVerts.add(currentVert);
+
+		// vorne rechts
+		currentVert = new Vertex3d(halfWidth, 0.0f, halfDepth);
+		footprintVerts.add(currentVert);
+
+		mFootprint = new MyPolygon(footprintVerts);
+
+		// extrudiere den erzeugten Grundriss
+		extrudeFootprint();
+
+		// alle Berechnungen durchfuehren
+		finalizeCreation();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public void setWidth(float mfWidth) {
+		this.mWidth = mfWidth;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public Float getWidth() {
+		return mWidth;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public void setHeight(float mfHeight) {
+		this.mHeight = mfHeight;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public Float getHeight() {
+		return mHeight;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public void setDepth(float mfDepth) {
+		this.mDepth = mfDepth;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public Float getDepth() {
+		return mDepth;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void extrude(Side whichFace, Axis extrudeAxis, float extrudeAmount) {
+
+		LOGGER.info("Cube.Extrude mit Parametern: Side: " + whichFace
+				+ " Achse: " + extrudeAxis + " extrudeAmount: " + extrudeAmount);
+
+		// wenn keine Achse oder keine Seite angegeben wurde, breche ab
+		if (whichFace == Side.UNKNOWN) {
+			new PrototypeException("Cube.Extrude aufgerufen ohne Seitenangabe");
+			return;
+		}
+
+		if (extrudeAxis == Axis.UNKNOWN) {
+			new PrototypeException(
+					"Cube.Extrude aufgerufen ohne Achsenspezifikation");
+			return;
+		}
+
+		// verschiebe alle Vertices zurueck an ihre Ausgangsposition
+		// speichere dabei zunaechst die aktuelle Position
+		MyVector3f currentPosition = getPosition();
+		translate(new MyVector3f(0.0f, 0.0f, 0.0f));
+
+		// Skalierungsoperation an allen Faces
+		// durchlaufe alle Vertices und addiere den Extrude-Amount auf die
+		// jeweilige Komponente
+		switch (whichFace) {
+
+		case ALL:
+
+			Iterator<Vertex3d> vertexIter = mVertices.iterator();
+			while (vertexIter.hasNext()) {
+
+				MyVector3f tempPosition = vertexIter.next().getPositionPtr();
+				extrudeQuad(tempPosition, extrudeAxis, extrudeAmount);
+
+			}
+			break;
+		case ID:
+
+			// es wird nur ein Face mit einer bestimmten ID extrudiert, alle
+			// anderen Faces bleiben unberuehrt
+
+			break;
+
+		// es werden alle Faces mit einer bestimmten Ausrichtung extrudiert
+		default:
+			Iterator<AbstractQuad> faceIter = mOutdoorQuads.iterator();
+			while (faceIter.hasNext()) {
+				AbstractQuad tempQuad = faceIter.next();
+
+				// handelt es sich um ein Face mit der geforderten Ausrichtung?
+				if (tempQuad.getDirection() != whichFace)
+					continue;
+				else {
+
+					if (tempQuad.getIndices().length == 0) {
+						new PrototypeException(
+								"Cube.extrude: Fuer das ausgewaehlte Face stehen keine Indices zur Verfuegung");
+						continue;
+					}
+					LOGGER.info("Cube.Extrude: Extrusionsberechnungen fuer Quad mit Ausrichtung "
+							+ whichFace + " werden durchgefuehrt");
+
+					// hole ueber das Face die Indices und greife darueber auf
+					// die Vertices zu
+					Iterator<Integer> indexIter = tempQuad.getAllIndices()
+							.iterator();
+					while (indexIter.hasNext()) {
+						Integer tempIndex = indexIter.next();
+						Vertex3d tempVertex = mVertices.get(tempIndex);
+						extrudeQuad(tempVertex.getPositionPtr(), extrudeAxis,
+								extrudeAmount);
+					}
+				}
+			}
+		}
+
+		// verschiebe die Vertices nach der Skalierung zurueck an ihre gesetzt
+		// Position
+		translate(currentPosition);
+
+		// calle die Update-Methoden aller Subelemente
+		this.update();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuehrt die Extrusion eines ausgewaehlten Quads entlang einer
+	 * Extrusionsachse durch
+	 */
+
+	private void extrudeQuad(MyVector3f position, Axis extrudeAxis,
+			float extrudeAmount) {
+		switch (extrudeAxis) {
+		case X:
+			position.x *= extrudeAmount;
+			break;
+		case Y:
+			position.y *= extrudeAmount;
+			break;
+		case Z:
+			position.z *= extrudeAmount;
+			break;
+		case ALL:
+			position.x *= extrudeAmount;
+			position.y *= extrudeAmount;
+			position.z *= extrudeAmount;
+			break;
+
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode unterteilt ein Face eines Cubes aufgrund eines festgelegten
+	 * Verhaeltnisses Algorithmus: -
+	 */
+
+	@Override
+	public void subdivideQuad(Side whichFace, subdivisionType type,
+			float subdivideFactor) {
+
+		LOGGER.info("Subdivide mit Parametern: Side: " + whichFace
+				+ " Unterteilungstyp: " + type + " subdivideFactor: "
+				+ subdivideFactor);
+
+		// unbekanntes Face => Abbruch
+		if (whichFace == Side.UNKNOWN) {
+			new PrototypeException("Cube.Subdivide mit Side.UNKNOWN aufgerufen");
+			return;
+		}
+
+		// ungueltige Unterteilungsachse
+		if (type == subdivisionType.UNKNOWN) {
+			new PrototypeException("Cube.Subdivide mit Axis." + type
+					+ " aufgerufen");
+			return;
+		}
+
+		// Faktor muss zwischen 0 und 1 liegen
+		if (subdivideFactor <= 0 || subdivideFactor >= 1) {
+			new PrototypeException(
+					"Cube.Subdivide mit subdivideFaktor "
+							+ subdivideFactor
+							+ " aufgerufen. Der Unterteilungsfaktor muss zwischen 0 und 1 liegen");
+			return;
+		}
+
+		switch (whichFace) {
+		// ALL wird heruntergebrochen auf die Unterteilung jedes einzelnen Faces
+		case ALL:
+
+			// durchlaufe alle einzelnen Quads und rufe ihre
+			// Unterteilungsmethode auf
+			Iterator<AbstractQuad> quadIterator = mOutdoorQuads.iterator();
+			while (quadIterator.hasNext()) {
+				quadIterator.next().subdivideQuad(type, subdivideFactor);
+			}
+
+			break;
+
+		case ID:
+
+			break;
+
+		default:
+
+			// durchlaufe alle Faces und hole das Face, das gesucht wird
+			Iterator<AbstractQuad> quadIter = mOutdoorQuads.iterator();
+			while (quadIter.hasNext()) {
+				AbstractQuad tempQuad = quadIter.next();
+				if (tempQuad.getDirection() != whichFace)
+					continue;
+
+				// unterteile das Face
+				tempQuad.subdivideQuad(type, subdivideFactor);
+
+			}
+
+			break;
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Erstellt einen neuen Cube als Kopie des aktuellen, anschliessend werden
+	 * beide Cubes ueber die Extrude-Methoden skaliert. Der Extrude-Vorgang ist
+	 * abhaengig von der Ausrichtung der Faces (aktuell ueber die Sides geloest)
+	 */
+	@Override
+	public iGraphicComplex subdivide(subdivisionType type,
+			float subdivisionFactor) {
+
+		MyVector3f centerVector = null, initialPosition = null, scaledVect1 = null, scaledVect2 = null, newPos1 = null, newPos2 = null;
+
+		LOGGER.info("Cube.subdivide mit Parametern aufgerufen: Unterteilungstyp: "
+				+ type + " Unterteilungsfaktor: " + subdivisionFactor);
+
+		AbstractComplex newCube = null;
+
+		// subdivisionFactor muss in einem Bereich zwischen 0 und 1 liegen
+		if (subdivisionFactor >= 1.0f || subdivisionFactor <= 0.0f) {
+			new PrototypeException(
+					"Cube.subdivide: Aufgerufen mit ungueltigem Unterteilungsfaktor "
+							+ subdivisionFactor);
+			return null;
+		}
+
+		// speichere die Ausgangsposition, Subdivision wird im Ursprung des
+		// Koordinatensystems durchgefuehrt
+		MyVector3f currentPosition = getPosition();
+		translate(new MyVector3f(0.0f, 0.0f, 0.0f));
+
+		// erzeuge eine Deep-Copy des aktuellen Objekts
+		newCube = this.clone();
+
+		// generiere eine ID fuer den Cube und alle Kind-Quads
+		newCube.generateID(null, null);
+
+		// melde den Cube und alle Kindquads bei der Objektverwaltung an
+		newCube.register();
+
+		float inverseSubdivionAmount = 1.0f - subdivisionFactor;
+
+		initialPosition = getPosition();
+
+		// unterscheide abhaengig vom Subdivisiontype die Berechnung des Vektors
+		// zwischen den Mittelpunkten der jeweiligen Quads
+		switch (type) {
+		case HORIZONTAL:
+
+			/*
+			 * bei der horizontalen Unterteilung befindet sich der
+			 * Ausgangsquader nach der Transformation oben, der neue Quader
+			 * unten => skaliere das BOTTOM-Quad des Ausgangsquaders um den
+			 * Amount und das TOP-Quad des neuen Quaders um das inverse des
+			 * Ammounts weiterhin muessen die Positionen entlang des Vektors
+			 * zwischen den Mittelpunkten berechnet und anschliessend verschoben
+			 * werden
+			 */
+
+			// berechne zunaechst den Vektor zwischen den Mittelpunkten des TOP
+			// und
+			// des Bottom-Face des Ausgangswuerfels
+			centerVector = this.calculateCenterVector(Side.TOP, Side.BOTTOM);
+			break;
+
+		case VERTICAL:
+			// berechne zunaechst den Mittelpunktsvektor zwischen dem TOP und
+			// dem Bottom-Face des Ausgangswuerfels
+			centerVector = this.calculateCenterVector(Side.LEFT, Side.RIGHT);
+			break;
+
+		case DEEP:
+			// berechne zunaechst den Mittelpunktsvektor zwischen dem TOP und
+			// dem Bottom-Face des Ausgangswuerfels
+			centerVector = this.calculateCenterVector(Side.BACK, Side.FRONT);
+			break;
+
+		default:
+			new PrototypeException(
+					"Cube.subdivide: Aufruf mit ungueltigem Unterteilungstyp "
+							+ type);
+			return null;
+
+		}
+
+		// jetzt skaliert man den center-Vektor entsprechend dem
+		// Subdivision-Faktor
+		// und addiert bzw. subtrahiert anschliessend die skalierten
+		// vektoren auf die Position
+		// dabei teilt man die Strecke zunaechst in zwei Haelften (darum
+		// *0.5f) und nimmt dann die Anteile dieser Haelften
+		scaledVect1 = centerVector.clone();
+		scaledVect2 = centerVector.clone();
+
+		scaledVect1.scale(subdivisionFactor * 0.5f);
+		scaledVect2.scale(inverseSubdivionAmount * 0.5f);
+
+		newPos1 = new MyVector3f();
+		newPos1.add(initialPosition, scaledVect1);
+
+		newPos2 = new MyVector3f();
+		newPos2.sub(initialPosition, scaledVect2);
+
+		// Typabhaengige Extrusionsberechnungen
+		switch (type) {
+		case HORIZONTAL:
+			this.extrude(Side.BOTTOM, Axis.Y, subdivisionFactor);
+			this.extrude(Side.TOP, Axis.Y, subdivisionFactor);
+			newCube.extrude(Side.BOTTOM, Axis.Y, inverseSubdivionAmount);
+			newCube.extrude(Side.TOP, Axis.Y, inverseSubdivionAmount);
+			break;
+
+		case VERTICAL:
+			this.extrude(Side.LEFT, Axis.X, subdivisionFactor);
+			this.extrude(Side.RIGHT, Axis.X, subdivisionFactor);
+			newCube.extrude(Side.LEFT, Axis.X, inverseSubdivionAmount);
+			newCube.extrude(Side.RIGHT, Axis.X, inverseSubdivionAmount);
+			break;
+
+		case DEEP:
+			this.extrude(Side.FRONT, Axis.Z, subdivisionFactor);
+			this.extrude(Side.BACK, Axis.Z, subdivisionFactor);
+			newCube.extrude(Side.FRONT, Axis.Z, inverseSubdivionAmount);
+			newCube.extrude(Side.BACK, Axis.Z, inverseSubdivionAmount);
+			break;
+
+		default:
+			new PrototypeException(
+					"Cube.subdivide: Aufruf mit ungueltigem Unterteilungstyp "
+							+ type);
+			return null;
+		}
+
+		newPos1.add(currentPosition);
+		newPos2.add(currentPosition);
+
+		// verschiebe saemtliche Komponenten an die Zielpositionen und update
+		// die Substrukturen (wird in setPosition() automatisch erledigt)
+		translate(newPos1);
+		newCube.translate(newPos2);
+
+		return newCube;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public AbstractComplex cloneConcreteComponent() {
+		AbstractComplex newObject = new Cube(mParent, mWidth, mHeight, mDepth);
+		return newObject;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet einen Vektor zwischen den beiden Mittelpunkten der
+	 * Quads mit den uebergebenen Directions
+	 */
+
+	private MyVector3f calculateCenterVector(Side sideA, Side sideB) {
+
+		AbstractQuad tempA = null;
+		AbstractQuad tempB = null;
+
+		if (sideA == Side.UNKNOWN || sideB == Side.UNKNOWN) {
+			new PrototypeException(
+					"Cube.calculateCenterVector: Aufruf mit ungueltigen Seitenausrichtungen");
+			return null;
+		}
+
+		Iterator<AbstractQuad> quadIter = mOutdoorQuads.iterator();
+		while (quadIter.hasNext()) {
+			AbstractQuad temp = quadIter.next();
+			if (temp.getDirection() == sideA)
+				tempA = temp;
+			if (temp.getDirection() == sideB)
+				tempB = temp;
+		}
+
+		MyVector3f tempACenter = tempA.getCenter();
+		MyVector3f tempBCenter = tempB.getCenter();
+
+		MyVector3f result = new MyVector3f();
+		result.sub(tempBCenter, tempACenter);
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "cube";
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

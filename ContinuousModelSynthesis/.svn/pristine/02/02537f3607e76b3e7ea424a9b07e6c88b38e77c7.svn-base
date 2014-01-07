@@ -1,0 +1,171 @@
+package semantic.city.builder.modelsynthesis.model;
+
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.log4j.Logger;
+
+import semantic.city.builder.modelsynthesis.algorithm.IDGenerator;
+
+/**
+ * Klasse fungiert als Basisklasse fuer die Geometrie-Wrapper-Klassen und ermoeglicht die Zuweisung von Labels und
+ * Status zu den einzelnen Instanzen der Unterklassen
+ * @author Patrick Gunia
+ *
+ */
+
+abstract public class ModelSynthesisBaseGeometry {
+	
+	/** Logging-Instanz */
+	protected final static Logger LOGGER = Logger.getLogger(ModelSynthesisBaseGeometry.class);
+
+	/** ID des Elements */
+	protected transient Integer mID = null;
+	
+	/** Aktueller Status */
+	protected transient State mState = State.UNDEFINED;
+	
+	/** Aktuelles Label */
+	protected transient String mLabel = null;
+
+	/** Methode liefert die adjazenten Faces der Komponente*/
+	public abstract Set<Face> getAdjacentFaces();
+	
+	/** Map speichert die Position der adjazenten Faces fuer das aktuelle Vertex */
+	protected transient Map<FacePosition, Face> mAdjacentFaces = null;
+	
+	/** Methode liefert eine Liste mit saemtlichen Komponente, die adjazent zur aktuellen Komponente verlaufen */
+	public abstract Set<ModelSynthesisBaseGeometry> getAdjacentComponents();
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mState
+	 * @param mLabel
+	 */
+	public ModelSynthesisBaseGeometry(State mState, String mLabel) {
+		super();
+		
+		mID = IDGenerator.getInstance().getID();
+		LOGGER.trace("ID: " + mID + " fuer " + this.getClass().getName());
+		
+		
+		this.mState = mState;
+		this.mLabel = mLabel;
+		this.mAdjacentFaces = new HashMap<FacePosition, Face>(4);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mState
+	 */
+	public State getState() {
+		return mState;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mState the mState to set
+	 */
+	public void setState(State mState) {
+		this.mState = mState;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mLabel
+	 */
+	public String getLabel() {
+		return mLabel;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mLabel the mLabel to set
+	 */
+	public void setLabel(String mLabel) {
+		this.mLabel = mLabel;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mID
+	 */
+	public Integer getID() {
+		return mID;
+	}
+	
+	// ------------------------------------------------------------------------------------------	
+	/**
+	 * Methode setzt das uebergebene Face auf die uebergebene Positon
+	 * @param position Zielposition innerhalb der Map
+	 * @param face Faceinstanz, die auf diese Position gesetzt wird
+	 */
+	public void setFace(final FacePosition position, final Face face) {
+	
+		assert !mAdjacentFaces.containsKey(position): "FEHLER: Vertex " + getID() + " enthaelt bereits ein adjazentes Faces auf Position " + position;
+		mAdjacentFaces.put(position, face);
+		
+	}
+	// ------------------------------------------------------------------------------------------	
+	/**
+	 * Methode liefert das Face an der Uebergabeposition
+	 * @param position Position, fuer die das Face geliefert werden soll
+	 * @return Face, an der angefragten Position
+	 */
+	public Face getFace(final FacePosition position) {
+		return mAdjacentFaces.get(position);
+	}
+	
+	// ------------------------------------------------------------------------------------------	
+	/** 
+	 * Methode liefert die Position des Faces in Bezug auf die verarbeitete Komponente
+	 * @param face Face, dessen Position ermittelt werden soll
+	 * @return FacePosition des Faces, falls dieses adjazent zur Komponente ist, null sonst
+	 */
+	public FacePosition getFacePosition(final Face face) {
+		Iterator<FacePosition> faceIter = mAdjacentFaces.keySet().iterator();
+		FacePosition curPos = null;
+		while(faceIter.hasNext()) {
+			curPos = faceIter.next();
+			if(mAdjacentFaces.get(curPos) == face) return curPos;
+		}
+		return null;
+	}
+	// ------------------------------------------------------------------------------------------	
+	/**
+	 * Methode gibt saemtliche adjazenten Faces der Komponente inklusive ihrer Position aus
+	 */
+	public void printAdjacentFaces() {
+		Iterator<FacePosition> facePosIter = mAdjacentFaces.keySet().iterator();
+		FacePosition curPos = null;
+		String separator = System.getProperty("line.separator");
+		String msg = separator + "Component: " + getClass().getSimpleName() + " ID: " + getID() + separator;
+		while(facePosIter.hasNext()) {
+			curPos = facePosIter.next();
+			if(mAdjacentFaces.get(curPos) != null) {
+				msg += "Pos: " + curPos + " Face: " + mAdjacentFaces.get(curPos).getID() + separator;
+			}
+		}
+		LOGGER.info(msg);
+	}
+
+	// ------------------------------------------------------------------------------------------	
+
+	/* (non-Javadoc)
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		return "ID: " + getID() + " Label: " + getLabel();
+	}
+	
+	// ------------------------------------------------------------------------------------------	
+
+}

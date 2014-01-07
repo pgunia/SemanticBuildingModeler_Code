@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+    targetNamespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/ExampleBasedSynthesis"
+    elementFormDefault="qualified" attributeFormDefault="unqualified"
+    xmlns:smcb_ct="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/CommonTypes"
+    xmlns:smcb_eb="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/ExampleBasedSynthesis"> 
+    
+    <xs:import
+        namespace="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/CommonTypes"
+        schemaLocation="https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/CommonTypes/CommonTypes.xsd"/>
+    
+    <xs:element name="exampleBased">
+        <xs:annotation>
+            <xs:documentation xml:lang="en"> Example-Based Footprints are computed using an algorithm
+                which creates footprints which are similar to an input-footprint. Most of the fowllowing
+                parameters are used to control the algorithmic synthesis process. </xs:documentation>
+        </xs:annotation>
+        <xs:complexType>
+            <xs:all>
+                <xs:element ref="smcb_ct:polygonSource"/>
+                <xs:element name="firstComponentType" type="smcb_eb:ruleTypes" default="INSIDE" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Type of the first rule which is used to assign states
+                            to components of the algorithm. </xs:documentation>
+                    </xs:annotation> 
+                </xs:element>
+                <xs:element name="cornerCount" type="xs:integer" default="-1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> How many times can Corner-Rules be applied to the
+                            algorithm-components? -1 = unbounded </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                
+                <xs:element name="reflexCornerCount" type="xs:integer" default="-1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> How many times can Reflex-Corner-Rules be applied to
+                            the algorithm-components? -1 = unbounded </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="edgeCount" type="xs:integer" default="-1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> How many times can Edge-Rules be applied to the
+                            algorithm-components? -1 = unbounded </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="insideCount" type="xs:integer" default="-1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> How many times can Inside-Rules be applied to the
+                            algorithm-components? -1 = unbounded </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="outsideCount" type="xs:integer" default="-1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> How many times can Outside-Rules be applied to the
+                            algorithm-components? -1 = unbounded </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="randomComponentChoice" type="xs:boolean" default="false" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Defines wether or not the choice of components should
+                            be random or deterministic. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="randomStateChoice" type="xs:boolean" default="false" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Defines wether or not the choice of states should be
+                            random or deterministic. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="consistencyConstraint" type="xs:boolean" default="true" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Defines wether or not the system prefers such
+                            rule-assigments which better fit the already assigned component-states.
+                        </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="onlyRayComponents" type="xs:boolean" default="false" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Defines wether or not the system should only choose
+                            ray-components for rule-assignment. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="onlyVertexComponents" type="xs:boolean" default="true" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Defines wether or not the system should only choose
+                            vertex-components for rule-assignment. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="cornerVoteBoost" type="xs:positiveInteger" default="1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Boost-Factor for Corner-Rules. Higher factors increase
+                            the possibility that rules of this type are chosen. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="reflexCornerVoteBoost" type="xs:positiveInteger" default="1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Boost-Factor for Reflex-Corner-Rules. Higher factors
+                            increase the possibility that rules of this type are chosen. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="edgeVoteBoost" type="xs:positiveInteger" default="1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Boost-Factor for Edge-Rules. Higher factors increase
+                            the possibility that rules of this type are chosen. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="outsideVoteBoost" type="xs:positiveInteger" default="1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Boost-Factor for Outside-Rules. Higher factors increase
+                            the possibility that rules of this type are chosen. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="insideVoteBoost" type="xs:positiveInteger" default="1" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Boost-Factor for Inside-Rules. Higher factors increase
+                            the possibility that rules of this type are chosen. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="numberOfParallelRays" type="xs:positiveInteger" default="5" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Number of parallel rays which are created for each
+                            input-direction. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="parallelRayDistance" type="xs:float" default="17.7" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Distance between each pair of parallel rays during the
+                            synthesis-part of the algorithm. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="parallelRayDistanceRuleComputation" type="xs:float" default="73.71"
+                    minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Distance between each pair of parallel rays during the
+                            rule-computation-part of the algorithm. </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+                <xs:element name="randomGrowth" type="xs:boolean" default="false" minOccurs="0">
+                    <xs:annotation>
+                        <xs:documentation xml:lang="en"> Defines wether or not the system chooses components
+                            from the whole catalogue or from a smaller portion of already "touched" components.
+                        </xs:documentation>
+                    </xs:annotation>
+                </xs:element>
+            </xs:all>
+        </xs:complexType>
+    </xs:element>
+    
+    
+    
+    <xs:simpleType name="ruleTypes">
+        <xs:annotation>
+            <xs:documentation xml:lang="en"> Enumeration-Type which contains all avaiable types of rules
+                within the synthesis-algorithm. </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="INSIDE"/>
+            <xs:enumeration value="OUTSIDE"/>
+            <xs:enumeration value="CORNER"/>
+            <xs:enumeration value="EDGE"/>
+            <xs:enumeration value="REFLEX_CORNER"/>
+        </xs:restriction>
+    </xs:simpleType>
+</xs:schema>

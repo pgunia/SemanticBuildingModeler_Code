@@ -1,0 +1,3 @@
+03 Nov 2013 16:09:36 DEBUG - ConfigurationController.processSystemConfiguration(80) | Processing Systemconfiguration...
+03 Nov 2013 16:09:42 DEBUG - ConfigurationController.isValid(337) | https://raw.github.com/pgunia/SemanticCityBuilder/master/Schema/System/SystemSchema.xsd
+03 Nov 2013 16:09:42 DEBUG - ConfigurationController.processSystemConfiguration(92) | Processing Systemconfiguration...done!

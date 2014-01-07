@@ -1,0 +1,210 @@
+package semantic.city.builder.modelsynthesis.model;
+
+import java.util.Iterator;
+import java.util.Map;
+import java.util.TreeMap;
+
+import semantic.city.builder.configurationservice.model.enums.RuleType;
+import semantic.city.builder.modelsynthesis.algorithm.IDGenerator;
+
+/**
+ * Klasse modelliert den Status einer Komponente (bsw. Kante oder Vertex) in Form einer Mapstruktur
+ * @author Patrick Gunia
+ *
+ */
+
+public class ComponentState {
+
+	/** Eindeutiger Identifier der Regel */
+	private transient Integer mStateID = null;
+	
+	/** Mapstruktur speichert die jeweiligen Zuweisungen fuer die fortlaufend nummerierten Elemente der Komponente */
+	private transient Map<FacePosition, State> mAssignments = null;
+	
+	// ------------------------------------------------------------------------------------------
+
+	public ComponentState() {
+		mAssignments = new TreeMap<FacePosition, State>();
+		mStateID = IDGenerator.getInstance().getID();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode fuegt der Assignmentliste ein neues Element hinzu
+	 * @param compIndex Index der Elements (Faces oder Edges)
+	 * @param state Status des Elements
+	 */
+	public void addAsignment(final FacePosition facePosition, final State state) {
+		assert !mAssignments.containsKey(facePosition): "FEHLER: Fuer Element " + facePosition + " wurde bereits eine Zuweisung vorgenommen: " + mAssignments.get(facePosition);
+		mAssignments.put(facePosition, state);
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mAssignments
+	 */
+	public Map<FacePosition, State> getAssignments() {
+		return mAssignments;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	
+	/**
+	 * Methode liefert den Status der i-ten Komponente innerhalb der Assignment-Map
+	 * @param index Index, fuer den das Assignment geliefert werden soll
+	 * @return State, der fuer den jeweiligen Index gesetzt ist
+	 */
+	public State getAssignmentByIndex(final FacePosition facePosition) {
+		// assert mAssignments.containsKey(facePosition): "FEHLER: Fuer Index " + facePosition + " existiert noch keine Festlegung!";
+		return mAssignments.get(facePosition);
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/* (non-Javadoc)
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		String sep = System.getProperty("line.separator");
+		String msg = "ID: " + getID() + " Type: " + getRuleType() + sep;
+		Iterator<FacePosition> stateIter = mAssignments.keySet().iterator();
+		FacePosition curPos = null;
+		while(stateIter.hasNext()) {
+			curPos = stateIter.next();
+			msg += curPos + ": " + mAssignments.get(curPos) + sep;
+		}
+		
+		return msg;
+	}
+	// ------------------------------------------------------------------------------------------
+
+
+	/** 
+	 * Merhode testet, ob der uebergebene Status aequivalent zum aktuellen Status ist
+	 * @param other Status, der auf Aequivalenz getestet wird
+	 * @return True, falls die Zuweisungen der Status identisch sind, False sonst
+	 */
+	public boolean isEquivalent(final ComponentState other) {
+		Iterator<FacePosition> posIter = mAssignments.keySet().iterator();
+		State curState = null;
+		FacePosition curPos = null;
+		
+		// durchlaufe alle Zuweisungen des aktuellen Objekts => sobald eine Zuweisung nicht in beiden Status vorkommt, ist das Component-Objekt nicht identisch
+		while(posIter.hasNext()) {
+			curPos = posIter.next();
+			curState = mAssignments.get(curPos);
+			if(curState != other.getAssignmentByIndex(curPos)) return false;
+		}
+		
+		return true;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert die Anzahl der aktuell gespeicherten Regeln
+	 * @return Anzahl der in der Map gespeicherten Regeln
+	 */
+	public Integer getAssignmentCount() {
+		return mAssignments.size();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mStateID
+	 */
+	public Integer getID() {
+		return mStateID;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert die Anzahl aller Faces, die innerhalb dieser Regel auf INTERIOR gesetzt werden
+	 * @return
+	 */
+	public Integer getNumberOfInteriorStates() {
+		int result = 0;
+		Iterator<State> stateIter = mAssignments.values().iterator();
+		
+		// fuer jeden INTERIOR-State wird der Counter inkrementiert
+		while(stateIter.hasNext()) {
+			if(stateIter.next().equals(State.INTERIOR)) ++result;
+		}
+		return result;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Was fuer eine Komponente wird durch dieses Assignment erzeugt? 
+	 * @return Komponententyp in Bezug auf den Grundriss (bsw. Ecke, Kante etc.)
+	 */
+	public RuleType getRuleType() {
+		int numberOfInteriorStates = getNumberOfInteriorStates();
+		int numberOfAssignments = mAssignments.size();
+		
+		// Regel fuer Strahlen-Assignment
+		if(numberOfAssignments == 2) {
+			switch(numberOfInteriorStates) {
+				case 0:
+					return RuleType.OUTSIDE;
+				case 1:
+					return RuleType.EDGE;
+				case 2: 
+					return RuleType.INSIDE;
+				default:
+					return RuleType.UNDEFINED;
+			}
+		}
+		// Regel fuer Vertex-Assignment
+		else if(numberOfAssignments == 4){
+			switch(numberOfInteriorStates) {
+				case 0: 
+					return RuleType.OUTSIDE;
+				case 1:
+					return RuleType.CORNER;
+				case 2:
+					return RuleType.EDGE;
+				case 3:
+					return RuleType.REFLEX_CORNER;
+				case 4: 
+					return RuleType.INSIDE;
+				default:
+					return RuleType.UNDEFINED;
+				}
+		}
+		else assert false: "Fehlerhaftes Assignment: " + numberOfAssignments + " Zuweisungen vorhanden!";
+		return RuleType.UNDEFINED;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/* (non-Javadoc)
+	 * @see java.lang.Object#hashCode()
+	 */
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result
+				+ ((mStateID == null) ? 0 : mStateID.hashCode());
+		return result;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/* (non-Javadoc)
+	 * @see java.lang.Object#equals(java.lang.Object)
+	 */
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		ComponentState other = (ComponentState) obj;
+		if (mStateID == null) {
+			if (other.mStateID != null)
+				return false;
+		} else if (!mStateID.equals(other.mStateID))
+			return false;
+		return true;
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

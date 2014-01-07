@@ -1,0 +1,279 @@
+package math;
+
+import org.apache.log4j.Logger;
+
+
+
+
+
+/**
+ * @author Patrick Gunia
+ * Klasse zur Beschreibung eines Strahls durch eine 3d-Vektor-Darstellung definiert
+ * durch Stuetzvektor und Richtungsvektor
+ * WICHTIG:
+ * alle Getter dieser Klasse geben Kopien zurueck, keine Pointer auf die eigentlichen Objekte!
+ */
+public class Ray implements Cloneable {
+	
+	/** Logging-Instanz */
+	protected final static Logger LOGGER = Logger.getLogger("math.Ray");
+	
+	/** Startpunkt des Strahls */
+	transient protected MyVector3f mStart = null;
+	
+	/** Endpunkt des Strahls */
+	transient protected MyVector3f mEnd = null;
+	
+	/** Richtung des Strahls */ 
+	transient protected MyVector3f mDirection = null;
+
+	
+	// ------------------------------------------------------------------------------------------
+
+	public MyVector3f getStart() {
+		assert mStart != null: "Startpunkt ist nicht definiert, Kopie kann nicht erstellt werden";
+		return mStart.clone();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public MyVector3f getStartPtr() {
+		return mStart;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Leerer Default-Konstruktor
+	 */
+	public Ray() {
+	
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @param mStart Startpunkt des Strahls
+	 * @param mDirection Richtung des Strahls
+	 */
+	public Ray(final MyVector3f start, final MyVector3f direction) {
+		super();
+		
+		assert start != null && start != null: "FEHLER: Ein Eingabevektor ist null: Start: " + mStart +  " Direction: " + mDirection;
+		mStart = start.clone();
+		mDirection = direction.clone();
+		
+		mStart.normalizeRange();
+		mDirection.normalizeRange();
+		mEnd = new MyVector3f();
+		mEnd.add(mStart, mDirection);
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @param startVert
+	 * @param endVert
+	 */
+	public Ray(final Vertex3d startVert, final Vertex3d endVert) {
+		super();
+		mStart = startVert.getPosition();
+		mDirection = new MyVector3f();
+		mDirection.sub(endVert.getPosition(), startVert.getPosition());
+		mStart.normalizeRange();
+		mEnd = endVert.getPosition();
+		mEnd.normalizeRange();
+		mDirection.normalizeRange();
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String toString() {
+		return "Start: " + mStart + " End: " + mEnd + " Direction: " + mDirection;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public void setStart(final MyVector3f mStart) {
+		mStart.normalizeRange();
+		this.mStart = mStart;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public MyVector3f getDirection() {
+		assert mDirection != null:"Direction-Vektor ist null, Kopie kann nicht erzeugt werden";
+		return mDirection.clone();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	public MyVector3f getDirectionPtr() {
+		return mDirection;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	public void setDirection(final MyVector3f mDirection) {
+		mDirection.normalizeRange();
+		this.mDirection = mDirection;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mEnd
+	 */
+	public MyVector3f getEnd() {
+		assert mEnd != null: "FEHLER: End-Punkt ist fuer den aktuellen Strahl nicht gesetzt, es kann keine Kopie erzeugt werden";
+		return mEnd.clone();
+	}
+	// ------------------------------------------------------------------------------------------
+	public MyVector3f getEndPtr() {
+		return mEnd;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	public Vertex3d getStartVertex() {
+		return new Vertex3d(mStart);
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	public Vertex3d getEndVertex() {
+		return new Vertex3d(mEnd);
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mEnd the mEnd to set
+	 */
+	public void setEnd(final MyVector3f mEnd) {
+		this.mEnd = mEnd;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result
+				+ ((mDirection == null) ? 0 : mDirection.hashCode());
+		result = prime * result + ((mStart == null) ? 0 : mStart.hashCode());
+		return result;
+	}
+	// ------------------------------------------------------------------------------------------
+
+
+	@Override
+	public boolean equals(final Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		final Ray other = (Ray) obj;
+		if (mDirection == null) {
+			if (other.mDirection != null)
+				return false;
+		} else if (!mDirection.equals(other.mDirection))
+			return false;
+		if (mStart == null) {
+			if (other.mStart != null)
+				return false;
+		} else if (!mStart.equals(other.mStart))
+			return false;
+		return true;
+	}
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public Ray clone()  {
+		Ray result = null;
+		try {
+			result = (Ray) super.clone();
+		} catch (CloneNotSupportedException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		result.setDirection(getDirection());
+		result.setStart(getStart());
+		result.setEnd(getEnd());
+		return result;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * @return Laenge des Liniensegments zwischen Start- und Endpunkt
+	 */
+	public float getLength() {
+		return mDirection.length();
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode verschiebt den aktuellen Strahl um den Translationsvektor
+	 * @param translation Verschiebungsvektor
+	 */
+	public void translate(final MyVector3f translation) {
+		mStart.add(translation);
+		mEnd.add(translation);
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode skaliert den aktuellen Strahl um den uebergebenen Skalierungsfaktor
+	 * @param sclaeFactor Skalierungsfaktor
+	 */
+	
+	public void scale(final float scaleFactor) {
+		
+		LOGGER.trace("SCALING: " + scaleFactor);
+		LOGGER.trace("Laenge vor Skalierung: " + mDirection.length());
+		
+		// verschiebe Anfangs- und Endpunkt des Strahls
+		final float relativeScalePerSide = (scaleFactor - 1.0f) / 2.0f;
+		final MyVector3f translation = getDirection();
+		
+		// Verschiebungsvektor um berechneten Faktor skalieren
+		// Startpunkt wird entgegen dem Richtungsvektor verschoben
+		translation.scale(-relativeScalePerSide);
+		mStart.add(translation);
+		
+		translation.scale(-1.0f);
+		mEnd.add(translation);
+		
+		mDirection.sub(mEnd, mStart);
+		LOGGER.trace("LAENGE NACH SKALIERUNG: " + mDirection.length());
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert den Mittelpunkt zwischen den beiden Strahlendpunkten
+	 * @return Mittelpunkt zwischen den beiden Strahlendpunkten
+	 */
+	public MyVector3f getCenter() {
+		
+		MyVector3f center = new MyVector3f();
+		MyVector3f halfDirection = mDirection.clone();
+		halfDirection.scale(0.5f);
+		center.add(mStart, halfDirection);
+		return center;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet die Steigung des Strahls in der XZ-Ebene 
+	 * @return Steigung der Geraden bzgl. ihrer XZ-Koordinaten
+	 */
+	public Double getXSlope() {
+		
+		// berechne die Steigung als Winkel mit der positiven x-Achse
+		MyVector3f positiveXAxis = new MyVector3f(1.0f, 0.0f, 0.0f);
+		
+		// berechne den vollen Winkel zwischen x-Achse und dem aktuellen Strahl
+		double angle = MyVectormath.getInstance().getFullAngleRad(positiveXAxis, getDirection());
+				
+		// bei einem Winkel von 0.0° koennen die Vektoren antiparallel sein => testen
+		if(angle == 0.0d) {
+			if(MyVectormath.getInstance().isAntiparallel(positiveXAxis, getDirection())) angle = Math.PI;
+		}
+		
+		// bilde den Winkel auf den Bereich 0...Pi ab
+		// dadurch spielt die Strahlenrichtung fuer die Labelbestimmung keine Rolle
+		// if(angle > (Math.PI)) angle -= Math.PI;
+		return (angle);
+	}
+	// ------------------------------------------------------------------------------------------
+
+
+}

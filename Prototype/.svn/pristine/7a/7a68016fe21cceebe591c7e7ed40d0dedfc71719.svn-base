@@ -1,0 +1,126 @@
+package semantic.city.builder.prototype.exporter;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.PrintWriter;
+import java.util.Iterator;
+import java.util.List;
+
+import org.apache.log4j.Logger;
+
+import semantic.city.builder.prototype.graphics.complex.AbstractComplex;
+
+/**
+ * 
+ * @author Patrick Gunia Abstrakte Basisklasse aller implementierten
+ *         Model-Exporter
+ * 
+ */
+
+public abstract class AbstractModelExport {
+
+	/** Log4j-Logger */
+	protected static Logger LOGGER = Logger
+			.getLogger(AbstractModelExport.class);
+
+	/** Basepfad aller Modelexporte */
+	// static protected final String mBaseDirectory = "ressource/Export/";
+	static protected final String mBaseDirectory = "/Users/Patrick/Dropbox/Promotion/";
+
+	/** PrintWriter-Instanz zum Output der Daten in eine Textdatei */
+	protected PrintWriter mWriter = null;
+
+	/**
+	 * Methode exportiert saemtliche Geometrie-Informationen ueber den
+	 * Filewriter in die Outputdatei
+	 */
+	abstract protected void exportComplex(AbstractComplex complex);
+
+	/** Methode liefert die Dateiendung des jeweiligen Zielformats */
+	abstract protected String getFileExtension();
+
+	// ------------------------------------------------------------------------------------------
+
+	/** Leerer Basisklassenkonstruktor */
+	public AbstractModelExport() {
+	};
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Export-Routine
+	 * 
+	 * @param complex
+	 *            Komplexes Objekt, das exportiert werden soll
+	 * @param path
+	 *            Pfad, an den die Datei geschrieben werden soll
+	 * @param filename
+	 *            Dateiname der Zieldatei, in die exportiert wird
+	 */
+	public void export(final AbstractComplex complex, final String path,
+			final String filename) {
+
+		// erzeuge einen PrintWriter
+		createFileWriter(filename + "." + getFileExtension(), path);
+
+		LOGGER.info("Beginne Export des Models: " + complex.getID()
+				+ " in Zieldatei: " + filename + getFileExtension());
+
+		// hole alle konkreten Objekte des uebergebenen komplexen Objekts
+		final List<AbstractComplex> complexObjects = complex
+				.getConcreteComponents();
+		LOGGER.info("Insgesamt werden " + complexObjects.size()
+				+ " Objekte exportiert");
+
+		AbstractComplex currentComplex = null;
+
+		final Iterator<AbstractComplex> complexIter = complexObjects.iterator();
+		while (complexIter.hasNext()) {
+			// und exportiere jedes einzelne Objekt
+			currentComplex = complexIter.next();
+			exportComplex(currentComplex);
+		}
+
+		// Aufraeumen
+		mWriter.flush();
+		mWriter.close();
+		mWriter = null;
+
+		LOGGER.info("Export erfolgreich abgeschlossen");
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode erzeugt eine Filewriter-Instanz basierend auf dem gesetzten
+	 * Basepfad und dem uebergebenen Dateinamen
+	 * 
+	 * @param filename
+	 *            Dateiname der Zieldatei des Exports
+	 * @param path
+	 *            Pfad zum Zielverzeichnis
+	 */
+	protected void createFileWriter(final String filename, final String path) {
+
+		// erzeuge einen Filewriter
+		File outputFile = new File(path, filename);
+		try {
+			mWriter = new PrintWriter(outputFile);
+		} catch (FileNotFoundException e) {
+			e.printStackTrace();
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Schreibt den uebergebenen String in die Ausgabedatei
+	 * 
+	 * @param message
+	 *            String, der in die Ausgabedatei geschrieben werden soll
+	 */
+	protected void writeMessage(String message) {
+		mWriter.println(message);
+	}
+
+} // ------------------------------------------------------------------------------------------
+

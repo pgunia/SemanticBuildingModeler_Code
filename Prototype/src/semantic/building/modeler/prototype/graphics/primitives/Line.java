@@ -1,0 +1,284 @@
+package semantic.building.modeler.prototype.graphics.primitives;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+
+import semantic.building.modeler.math.MyVector3f;
+import semantic.building.modeler.math.Vertex3d;
+import semantic.building.modeler.prototype.exception.PrototypeException;
+import semantic.building.modeler.prototype.graphics.interfaces.iGraphicPrimitive;
+import semantic.building.modeler.prototype.service.EdgeManager;
+
+public class Line extends AbstractPrimitive {
+
+	/**
+	 * wenn die Line unterteilt wurde, dann speichert dieses Array die beiden
+	 * Kindelemente
+	 */
+	private Line[] mlChildLines;
+
+	/** Index, über den die Line im Edge-Manager verwaltet wird */
+	private String msIndex;
+
+	/** Flag speichert, ob es sich bei der Line um eine Outline handelt */
+	private boolean isOutline = true;
+
+	// ------------------------------------------------------------------------------------------
+
+	public String getIndex() {
+		return msIndex;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public void setIndex(String msIndex) {
+		this.msIndex = msIndex;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public Line() {
+		super();
+		mIndices = new Integer[2];
+		mIndices[0] = null;
+		mIndices[1] = null;
+		mlChildLines = new Line[2];
+		mlChildLines[0] = null;
+		mlChildLines[1] = null;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuegt Punkte zur Line hinzu
+	 * 
+	 * @param index
+	 *            Index des Punktes auf der Linie
+	 */
+	public void addLinePoint(int index) {
+		boolean addedValue = false;
+		for (int i = 0; i < mIndices.length; i++) {
+			if (mIndices[i] == null) {
+				mIndices[i] = index;
+				addedValue = true;
+				break;
+			}
+		}
+		if (!addedValue) {
+			new PrototypeException(
+					"Line.addPoint: Mehr als 2 Vertexindices zur Line hinzugefuegt");
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void update() {
+		// TODO Auto-generated method stub
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public Line clone() {
+		Line result = new Line();
+		/*
+		 * Integer[] indices = new Integer[2]; indices[0] = new
+		 * Integer(mIndices[0]); indices[1] = new Integer(mIndices[1]);
+		 * 
+		 * // kopiere Indices result.setIndices(indices);
+		 */
+
+		// kopiere NUR den Index
+		// ueber diesen wird dann spaeter die Referenz auf die Line-Instanz im
+		// Manager hergestellt
+		result.setIndex(getIndex());
+
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void updateParent(iGraphicPrimitive parent) {
+
+		if (parent != null)
+			setParent(parent);
+		else {
+			new PrototypeException(
+					"Line.updateParent: Aufruf ohne gueltigen Parent");
+			return;
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode ueberschreibt die Normalenvektorberechnung der Basisklasse =>
+	 * eine Line besitzt im 3d-Raum keinen Normalenvektor
+	 */
+	@Override
+	public void calculatePlane() {
+		// TUE NICHTS
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode unterteilt eine Line derart, dass der neue Index als Trenner
+	 * zwischen den beiden urspruenglichen Indices eingefuegt wird => die beiden
+	 * neuen Lines werden dann Kinder der parent Line
+	 */
+
+	public void subdivideLine(Integer newIndex) {
+
+		// hole eine Referenz auf den EdgeManager des komplexen Parent-Objekts
+		EdgeManager edgeManager = getEdgeManager();
+
+		// baue die erste Line => besteht aus dem Startindex und dem neuen Index
+		String newIndexLine1 = createOrderedIndex(mIndices[0], newIndex);
+		Line newLine1 = edgeManager.getEdge(newIndexLine1, this);
+		newLine1.addLinePoint(mIndices[0]);
+		newLine1.addLinePoint(newIndex);
+		newLine1.setParent(this);
+		mlChildLines[0] = newLine1;
+
+		String newIndexLine2 = createOrderedIndex(newIndex, mIndices[1]);
+		Line newLine2 = edgeManager.getEdge(newIndexLine2, this);
+		newLine2.addLinePoint(newIndex);
+		newLine2.addLinePoint(mIndices[1]);
+		newLine2.setParent(this);
+		mlChildLines[1] = newLine2;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/** Methode berechnet den Mittelpunkt der Linie */
+	@Override
+	public void calculateCenter() {
+
+		List<Vertex3d> vertices = getVertices();
+
+		MyVector3f startVert = vertices.get(mIndices[0]).getPosition();
+		MyVector3f endVert = vertices.get(mIndices[1]).getPosition();
+
+		MyVector3f line = new MyVector3f();
+		line.sub(endVert, startVert);
+
+		// halbiere den Vector
+		line.scale(0.5f);
+
+		// und addiere den halbierten Vektor auf das Startvertex
+		startVert.add(line);
+
+		// setze den Mittelpunkt
+		setCenter(startVert);
+
+		// wenn Kinder vorhanden sind, rufe auch deren Methode auf
+		if (hasChildren()) {
+			mlChildLines[0].calculateCenter();
+			mlChildLines[1].calculateCenter();
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "line";
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public boolean hasChildren() {
+		for (int i = 0; i < mlChildLines.length; i++) {
+			if (mlChildLines[i] != null) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	public Line[] getChildren() {
+		return mlChildLines;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/** Verwaltungsmethode zum Hinzufuegen neuer Kinder zu einer Line-Struktur */
+	public void addChildLine(Line child) {
+		boolean addedChild = false;
+		for (int i = 0; i < mlChildLines.length; i++) {
+			if (mlChildLines[i] == null) {
+				mlChildLines[i] = child;
+				addedChild = true;
+				break;
+			}
+		}
+		if (!addedChild) {
+			new PrototypeException(
+					"Line.addChildLine: Mehr als 2 Kinder wurden zur Line hinzugefuegt");
+			return;
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Auf der Ebene der Lines dient die Methode nur dem Update der Kinder einer
+	 * Line. Fuer diese wird die Methode dann auch rekursiv weiter aufgerufen.
+	 */
+	@Override
+	public void updateReferences() {
+
+		if (hasChildren()) {
+			// 1. Kind verarbeiten
+			String index = mlChildLines[0].getIndex();
+			mlChildLines[0] = getEdgeManager().getEdge(index, this);
+
+			// 2. Kind verarbeiten
+			index = mlChildLines[1].getIndex();
+			mlChildLines[1] = getEdgeManager().getEdge(index, this);
+
+			// rufe rekursiv die Update-Methoden der Kinder auf
+			mlChildLines[0].updateReferences();
+			mlChildLines[1].updateReferences();
+
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	/** adde saemtliche Indices der Line mit evtl. Unterteilungen zum Ergebnis HashSet 
+	 * rufe die Methode rekursiv so lange auf, bis alle Indices gefunden wurden */
+	public Set<Integer> getAllIndices() {
+
+		Set<Integer> result = new HashSet<Integer>();
+		result.add(mIndices[0]);
+		result.add(mIndices[1]);
+
+		if (hasChildren()) {
+			result.addAll(mlChildLines[0].getAllIndices());
+			result.addAll(mlChildLines[1].getAllIndices());
+		}
+
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public boolean isOutline() {
+		return isOutline;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public void setOutline(boolean isOutline) {
+		this.isOutline = isOutline;
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

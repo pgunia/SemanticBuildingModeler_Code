@@ -1,0 +1,95 @@
+package semantic.building.modeler.prototype.building.footprint.walldescriptor;
+
+import semantic.building.modeler.math.MyPolygon;
+import semantic.building.modeler.prototype.enums.FootprintConnectionType;
+
+/**
+ * Klasse modelliert Verbindungen zwischen zwei polygonalen Grundrissen, bei
+ * denen offene Waende zur Verbindung genutzt werden
+ * 
+ * @author Patrick
+ * 
+ */
+
+public class OpenWallConnectionDescriptor extends WallDescriptor {
+
+	/** 1. polygonaler Grundriss */
+	protected MyPolygon mFootprint1 = null;
+
+	/** 2. polygonaler Grundriss */
+	protected MyPolygon mFootprint2 = null;
+
+	/** Indices beginnen immer bei 0 */
+	/**
+	 * Index der Polygonkante im 1. polygonalen Grundriss, fuer die die
+	 * Beschreibung gilt
+	 */
+	protected int mEdgeIndex1 = -1;
+
+	/**
+	 * Index der Polygonkante im 2. polygonalen Grundriss, fuer die die
+	 * Beschreibung gilt
+	 */
+	protected int mEdgeIndex2 = -1;
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Standardkonstruktor
+	 * 
+	 * @param poly1
+	 *            1. Grundriss
+	 * @param poly2
+	 *            2. Grundriss
+	 * @param edgeIndex1
+	 *            Index der betroffenen Kante auf dem ersten Grundriss
+	 * @param edgeIndex2
+	 *            Index der betroffenen Kante auf dem zweiten Grundriss
+	 */
+	public OpenWallConnectionDescriptor(MyPolygon poly1, MyPolygon poly2,
+			int edgeIndex1, int edgeIndex2) {
+		mConnectionType = FootprintConnectionType.WALL_OPEN;
+		mFootprint1 = poly1;
+		mFootprint2 = poly2;
+		mEdgeIndex1 = edgeIndex1;
+		mEdgeIndex2 = edgeIndex2;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mFootprint1
+	 */
+	public MyPolygon getFootprint1() {
+		return mFootprint1;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mFootprint2
+	 */
+	public MyPolygon getFootprint2() {
+		return mFootprint2;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mEdgeIndex1
+	 */
+	public int getEdgeIndex1() {
+		return mEdgeIndex1;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mEdgeIndex2
+	 */
+	public int getEdgeIndex2() {
+		return mEdgeIndex2;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

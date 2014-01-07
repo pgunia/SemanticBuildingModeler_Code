@@ -1,0 +1,155 @@
+package semantic.building.modeler.weightedstraightskeleton.algorithm;
+
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.Map;
+import java.util.Set;
+
+import org.apache.log4j.Logger;
+
+import semantic.building.modeler.math.MyVector3f;
+import semantic.building.modeler.math.MyVectormath;
+
+/**
+ * 
+ * @author Patrick Gunia Klasse dient der einheitlichen Verarbeitung und
+ *         Zuweisung von Kantengewichten. Die Idee der Klasse ist es, Gewichte
+ *         nicht anhand der Eltern-Kind-Beziehungen zuzuweisen, sondern
+ *         basierend auf den Kantenausrichtungen. Da der Ablauf des Algorithmus
+ *         dazu fuehrt, dass die Kanten gleichmaessig ins Innere des Polygons
+ *         schrumpfen, sind diese immer parallel zu ihren Ausgangskanten.
+ *         Kindkanten kann darum aufgrund ihrer Ausrichtung das gleiche Gewicht
+ *         gegeben werden, wie ihren Eltern. Besteht das Eingabepolygon aus
+ *         vielen parallelen Kanten (ueblicher Fall), fuehrt dies dazu, dass
+ *         Kanten mit gleicher Ausrichtung immer gleich gewichtet sind. Dies ist
+ *         in der aktuellen Implementation des Prototyps nicht anders
+ *         vorgesehen, wo nur die rechte und linke Seite unterschiedlich (aber
+ *         untereinander gleich) gewichtet sind.
+ * 
+ */
+
+public class EdgeWeightService {
+
+	/**
+	 * Map mit Zuordnungen von Richtungsvektoren der Geraden zu ihren
+	 * Kantengewichten
+	 */
+	private Map<MyVector3f, Float> mEdgeWeights = null;
+
+	/** Logger */
+	protected static Logger logger = Logger.getLogger(EdgeWeightService.class);
+
+	// ------------------------------------------------------------------------------------------
+
+	public EdgeWeightService() {
+		mEdgeWeights = new HashMap<MyVector3f, Float>();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methoide testet, ob fuer den uebergebenen Strahl bereits eine Gewichtung
+	 * innerhalb der Map abgelegt wurde. Ist dies nicht der Fall, wird eine
+	 * solche hinzugefuegt.
+	 * 
+	 * @param direction
+	 *            Richtungsvektor, fuer den eine Gewichtung gesucht wird
+	 * @return Gewichtung fuer Kanten mit der Ausrichtung des uebergebenen
+	 *         Strahls
+	 */
+	public Float getWeight(final MyVector3f direction) {
+		final MyVectormath mathHelper = MyVectormath.getInstance();
+
+		// teste, ob bereits eine Ausrichtung existiert, die der uebergebenen
+		// exakt entspricht
+		if (mEdgeWeights.containsKey(direction))
+			return mEdgeWeights.get(direction);
+
+		// sonst durchlaufe alle bereits gespeicherten Ausrichtungen und
+		// verwende die mit der kleinsten Abweichung
+		Float minAngle = Float.MAX_VALUE, currentAngle = null;
+		Float currentResultWeight = null;
+
+		MyVector3f currentDirection = null;
+
+		final Set<MyVector3f> directions = mEdgeWeights.keySet();
+		Iterator<MyVector3f> directionIter = directions.iterator();
+		Float currentWeight = null;
+
+		directionIter = directions.iterator();
+		while (directionIter.hasNext()) {
+
+			// arbeite auf einer Kopie, um die Keys in der Map nicht zu
+			// veraendern
+			currentDirection = directionIter.next().clone();
+			currentWeight = mEdgeWeights.get(currentDirection);
+
+			currentAngle = mathHelper.calculateAngle(currentDirection,
+					direction);
+
+			// speichere immer das Gewicht der Kante, deren Winkel am wenigsten
+			// abweicht
+			if (Math.abs(currentAngle) < minAngle) {
+				minAngle = Math.abs(currentAngle);
+				currentResultWeight = currentWeight;
+			}
+		}
+
+		assert currentResultWeight != null : "FEHLER: Es konnte kein Kantengewicht fuer die uebergebene Ausrichtung ermittelt werden!";
+		return currentResultWeight;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode fuegt der Map eine Ausrichtung inklusive zugehoeriger Gewichtung
+	 * hinzu.
+	 * 
+	 * @param direction
+	 *            Richtungsvektor, fuer dessen Ausrichtung das uebergebene
+	 *            Gewicht gesetzt werden soll
+	 * @param weight
+	 *            Gewichtung fuer Strahlen mit der jeweiligen Ausrichtung
+	 */
+	public void addWeight(final MyVector3f direction, final Float weight) {
+
+		// teste, ob ein Strahl mit der exakt gleichen Richtung bereits
+		// existiert
+		if (mEdgeWeights.containsKey(direction))
+			return;
+
+		// sonst fuege einen neuen Eintrag zur Map hinzu
+		mEdgeWeights.put(direction, weight);
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode aktualisiert die richtungsabhaengigen Gewichte innerhalb des
+	 * Edge-Managers.
+	 * 
+	 * @param roofDescriptor
+	 *            Instanz der Dachkonstruktionskonfiguration
+	 */
+	public void changeWeights(final SkeletonRoofDescriptor roofDescriptor) {
+
+		logger.info("Aktualisiere Kantengewichte!");
+
+		float standardWeight = roofDescriptor.getMainWeight();
+		float newStandardWeight = roofDescriptor.getSecondMainWeight();
+		float sideWeight = roofDescriptor.getSideWeight();
+		float newSideWeight = roofDescriptor.getSecondSideWeight();
+
+		// durchlaufe alle Richtungen und aktualisiere die Gewichte
+		for (MyVector3f currentDirection : mEdgeWeights.keySet()) {
+
+			float curWeight = mEdgeWeights.get(currentDirection);
+			if (curWeight == standardWeight) {
+				mEdgeWeights.put(currentDirection, newStandardWeight);
+			} else if (curWeight == sideWeight) {
+				mEdgeWeights.put(currentDirection, newSideWeight);
+			}
+		}
+
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

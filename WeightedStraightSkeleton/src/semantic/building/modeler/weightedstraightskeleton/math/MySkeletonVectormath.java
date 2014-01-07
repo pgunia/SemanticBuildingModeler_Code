@@ -1,0 +1,141 @@
+package semantic.building.modeler.weightedstraightskeleton.math;
+
+import semantic.building.modeler.math.MyVector3f;
+import semantic.building.modeler.math.MyVectormath;
+import semantic.building.modeler.math.Ray;
+import semantic.building.modeler.weightedstraightskeleton.algorithm.SkeletonTriangle;
+import semantic.building.modeler.weightedstraightskeleton.algorithm.SkeletonVertex;
+
+public class MySkeletonVectormath extends MyVectormath {
+
+	private static MySkeletonVectormath instance = null;
+
+	// ------------------------------------------------------------------------------------------
+
+	public static MySkeletonVectormath getInstance() {
+		if (instance == null) {
+			instance = new MySkeletonVectormath();
+		}
+		return instance;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	private MySkeletonVectormath() {
+		super();
+		// TODO Auto-generated constructor stub
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet, ob sich ein Punkt innerhalb eines Dreiecks befindet =>
+	 * dafuer verwendet wird isSameSideOfRay fuer alle 3 Kanten => sobald der
+	 * Punkt fuer eine Kante auf der anderen Seite ist, kann der Test
+	 * abgebrochen werden (als Referenzpunkt wird immer jeweils der 3. Punkt
+	 * genommen Algorithmus:
+	 * http://www.blackpawn.com/texts/pointinpoly/default.html
+	 * 
+	 * @param point
+	 *            Eingabepunkt, fuer den getestet wird, ob er sich innerhalb des
+	 *            uebergebenen Dreiecks befindet
+	 * @param triangle
+	 *            Eingabedreieck
+	 * 
+	 * @return True, falls sich der Punkt innerhalb des Dreiecks befindet, False
+	 *         sonst
+	 */
+	public boolean isPointInTriangle(final MyVector3f point,
+			final SkeletonTriangle triangle) {
+
+		// hole alle 3 Eckpunkte des Dreiecks
+		MyVector3f A = triangle.getVertices()[0].getPositionPtr();
+		MyVector3f B = triangle.getVertices()[1].getPositionPtr();
+		MyVector3f C = triangle.getVertices()[2].getPositionPtr();
+
+		MyVector3f AB = new MyVector3f();
+		AB.sub(B, A);
+		Ray rayAB = new Ray(A, AB);
+
+		// teste jeweils auch, ob sich der Punkt auf der Kante befindet
+		if (isPointOnRay(point, rayAB)) {
+			if (isPointOnLineSegment(point, rayAB)) {
+				return true;
+			}
+		}
+
+		// teste die erste Seite
+		if (!isSameSideOfRay(rayAB, C, point))
+			return false;
+
+		MyVector3f AC = new MyVector3f();
+		AC.sub(C, A);
+		Ray rayAC = new Ray(A, AC);
+
+		if (isPointOnRay(point, rayAC)) {
+			if (isPointOnLineSegment(point, rayAC)) {
+				return true;
+			}
+		}
+
+		if (!isSameSideOfRay(rayAC, B, point))
+			return false;
+
+		MyVector3f BC = new MyVector3f();
+		BC.sub(C, B);
+		Ray rayBC = new Ray(B, BC);
+
+		if (isPointOnRay(point, rayBC)) {
+			if (isPointOnLineSegment(point, rayBC)) {
+				return true;
+			}
+
+		}
+
+		if (!isSameSideOfRay(rayBC, A, point))
+			return false;
+
+		// alle Tests erfolgreich, Punkt liegt im Dreieck
+		return true;
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * handelt es sich bei dem betrachteten Vertex um ein Reflex-Vertex, so muss
+	 * die Winkelhalbierende basierend auf dem Reflexionsgesetz (Einfallswinkel
+	 * = Ausfallswinkel) neu berechnet werden Formel: (R = 2N(N*L)-L) mit: L :=
+	 * berechnete Winkelhalbierende fuer spitzen Winkel N := Vertexnormale R :=
+	 * berechneter Reflexionsvektor
+	 * 
+	 * @param vertex
+	 *            Reflexvertex, fuer das die Winkelhalbierende bestimmt werden
+	 *            soll
+	 */
+	public void calculateWinkelhalbierendeForReflexVertex(SkeletonVertex vertex) {
+
+		MyVector3f N = vertex.getNormal();
+		MyVector3f L = vertex.getWinkelhalbierende().getDirection();
+		MyVector3f R = null;
+		Ray result = null;
+
+		// N*L
+		float nMultl = N.dot(L);
+		// 2N
+		N.scale(2.0f);
+		// 2N(N*L)
+		N.scale(nMultl);
+		// R = 2N(N*L) - L)
+		R = new MyVector3f();
+		R.sub(N, L);
+		R.normalize();
+
+		// schreibe den Vector zurueck in den Ray
+		result = new Ray(vertex.getPosition(), R);
+
+		vertex.setWinkelhalbierende(result);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

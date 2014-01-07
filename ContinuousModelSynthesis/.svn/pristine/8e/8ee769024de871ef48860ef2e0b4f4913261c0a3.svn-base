@@ -1,0 +1,453 @@
+package semantic.city.builder.modelsynthesis.model;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import semantic.city.builder.math.Axis;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.MyVectormath;
+import semantic.city.builder.math.Ray;
+import semantic.city.builder.math.Vertex3d;
+
+/**
+ * Klasse wrappt die Vertexdatenstrukturen fuer die Anforderungen des Algorithmus, so dass Vertices ein Label und einen State bekommen koennen
+ * @author Patrick Gunia
+ *
+ */
+
+public class VertexWrapper extends ModelSynthesisBaseGeometry {
+		
+	/** Vertexinstanz */
+	private Vertex3d mVertex = null;
+
+	/** Verweise auf alle Strahlen, die das Vertex als Startpunkt verwenden (sollten im Normalfall immer nur 2 sein) */
+	private final List<RayWrapper> mStartRays = new ArrayList<RayWrapper>(2);
+	
+	/** Verweise auf alle Strahlen, die das Vertex als Endpunkt verwenden (sollten im Normalfall immer nur 2 sein) */
+	private final List<RayWrapper> mEndRays = new ArrayList<RayWrapper>(2);
+		
+	/** Nachbarknoten des aktuellen Vertex, unterscheidet nicht zwischen gerichteten und ungerichteten Kanten */
+	private transient List<VertexWrapper> mNeighbours = null;
+	
+	/** Aktueller Abstand des Vertex vom Startknoten innerhalb des Dijkstra-Algorithmus */
+	private transient Integer mCurrentDistance = null;
+	
+	
+	/**
+	 * @param mState
+	 * @param mLabel
+	 * @param mVertex
+	 */
+	public VertexWrapper(State mState, String mLabel, Vertex3d mVertex) {
+		super(mState, mLabel);
+		this.mVertex = mVertex;
+	}
+	// ------------------------------------------------------------------------------------------
+
+
+	/**
+	 * @return the mVertex
+	 */
+	public Vertex3d getVertex() {
+		return mVertex;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mVertex the mVertex to set
+	 */
+	public void setVertex(Vertex3d mVertex) {
+		this.mVertex = mVertex;
+	}
+	// ------------------------------------------------------------------------------------------
+	/** 
+	 * Fuergt einen Strahl zur Liste der Strahlen hinzu, die an diesem Vertex beginnen
+	 * @param start Strahl, der am aktuellen Vertex beginnt
+	 */
+	public void addRayStart(final RayWrapper start) {
+		// if(!mStartRays.contains(start) && addNewRay(mStartRays, start)) {
+		if(!mStartRays.contains(start)) {
+			
+			mStartRays.add(start);
+			LOGGER.trace("Adde Startstrahl " + start +  " zu Vertex " + getID());
+		}
+	}
+	// ------------------------------------------------------------------------------------------
+	/** 
+	 * Fuergt einen Strahl zur Liste der Strahlen hinzu, die an diesem Vertex enden
+	 * @param end Strahl, der am aktuellen Vertex endet
+	 */
+	public void addRayEnd(final RayWrapper end) {
+		// if(!mEndRays.contains(end) && addNewRay(mEndRays, end)) {
+		if(!mEndRays.contains(end)) {
+
+			LOGGER.trace("Adde Endstrahl " + end + " zu Vertex " + getID());
+			mEndRays.add(end);
+		}
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mStartRays
+	 */
+	public List<RayWrapper> getStartRays() {
+		return mStartRays;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mEndRays
+	 */
+	public List<RayWrapper> getEndRays() {
+		return mEndRays;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/* (non-Javadoc)
+	 * @see java.lang.Object#hashCode()
+	 */
+	@Override
+	public int hashCode() {
+		final int prime = 31;
+		int result = 1;
+		result = prime * result + ((mVertex == null) ? 0 : mVertex.hashCode());
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/* (non-Javadoc)
+	 * @see java.lang.Object#equals(java.lang.Object)
+	 */
+	@Override
+	public boolean equals(Object obj) {
+		if (this == obj)
+			return true;
+		if (obj == null)
+			return false;
+		if (getClass() != obj.getClass())
+			return false;
+		VertexWrapper other = (VertexWrapper) obj;
+		if (mVertex == null) {
+			if (other.mVertex != null)
+				return false;
+		} else if (!mVertex.equals(other.mVertex))
+			return false;
+		return true;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert die Nachbarvertices des aktuellen Vertex, die ueber Kanten erreicht werden koennen
+	 * @return Liste mit allen Nachbarvertices
+	 */
+	public List<VertexWrapper> getNeighbours() {
+		
+		if(mNeighbours == null) {
+			mNeighbours = new ArrayList<VertexWrapper>(4);
+			
+			// adde die Start- bzw. Endpunkte der adjazenten Strahlen
+			for(int i = 0; i < mStartRays.size(); i++) mNeighbours.add(mStartRays.get(i).getEndVert());
+			for(int i = 0; i < mEndRays.size(); i++) mNeighbours.add(mEndRays.get(i).getStartVert());
+		}
+		return mNeighbours;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mCurrentDistance
+	 */
+	public Integer getCurrentDistance() {
+		return mCurrentDistance;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mCurrentDistance the mCurrentDistance to set
+	 */
+	public void setCurrentDistance(Integer mCurrentDistance) {
+		this.mCurrentDistance = mCurrentDistance;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public Set<Face> getAdjacentFaces() {
+		Set<Face> result = new HashSet<Face>(4);
+		
+		// adjazente Faces der ausgehenden Strahlen
+		RayWrapper curRay = null;
+		for(int i = 0; i < mStartRays.size(); i++) {
+			curRay = mStartRays.get(i);
+			result.addAll(curRay.getAdjacentFaces());
+		}
+		
+		// adjazente Faces der eingehenden Strahlen
+		for(int i = 0; i < mEndRays.size(); i++) {
+			curRay = mEndRays.get(i);
+			result.addAll(curRay.getAdjacentFaces());
+		}
+		
+		return result;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode ersetzt den uebergebenen alten Strahl durch den uebergebenen neuen Strahl, sofern der alte Strahl adjazent zum aktuellen Vertex
+	 * liegt.
+	 * @param newRay Neuer Strahl, durch den der alte Strahl ersetzt wird
+	 * @param oldRay Zu ersetzender Strahl
+	 * @return True, falls eine Ersetzung stattgefunden hat, False sonst
+	 */
+	public boolean replaceRay(final RayWrapper newRay, final RayWrapper oldRay) {
+	
+		boolean replacedRay = false;
+		if(mStartRays.contains(oldRay)) {
+			for(int i = 0; i < mStartRays.size(); i++) {
+				if(mStartRays.get(i) == oldRay) {
+					replacedRay = true;
+					mStartRays.set(i, newRay);
+				}
+			}
+		}
+		
+		if(mEndRays.contains(oldRay)) {
+			for(int i = 0; i < mStartRays.size(); i++) {
+				if(mEndRays.get(i) == oldRay) {
+					replacedRay = true;
+					mEndRays.set(i, newRay);
+				}
+			}
+		}
+	
+		if(replacedRay) LOGGER.info("Strahl " + oldRay.getID() + " wurde ersetzt durch " + newRay.getID() + " in Vertex " + getID());
+		return replacedRay;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode liefert eine Liste mit saemtlichen zum Vertex adjazenten Strahlen, beginnend mit den Startstrahlen
+	 * @return Liste mit saemtlichen adjazenten Strahlen des aktuellen Vertex
+	 */
+	public List<RayWrapper> getRays() {
+		List<RayWrapper> result = new ArrayList<RayWrapper>(4);
+		result.addAll(getStartRays());
+		result.addAll(getEndRays());
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------	
+	/**
+	 * Methode berechnet die Position saemtlicher Faces fuer das aktuelle Vertex.
+	 * @param labelToComponent Mapstruktur, die jedem Label die Komponente zuweist, ueber die es berechnet wurde
+	 */
+	public void computeFacePositions(final Map<String, ModelSynthesisBaseGeometry> labelToComponent) {
+		
+		// bestimme zunaechst den Strahl mit der groessten Aenderung in der z-Komponente (diese entscheidet, was "links" bzw. "rechts" ist)
+		MyVector3f rayDir = null;
+		RayWrapper curRay = null, curMaxRay = null;
+		
+		float curMaxZ = -Float.MAX_VALUE, curZ;
+				
+		// ueberspringe die Start bzw. Endvertices der parallelen Strahlen => diese enthalten keine adjazenten Faces
+		if(mStartRays.size() < 2) return;
+		
+		RayWrapper referenceRay = null;
+		MyVector3f curMaxStart = null;
+		for(int i = 0; i < mStartRays.size(); i++) {
+		
+			// verwende immer die Richtung des Referenzstrahls, der sich aus dem Label des aktuellen Strahls ergibt => dadurch ist fuer gleiche Labels die gleiche Orientierung garantiert
+			curRay = mStartRays.get(i);
+			
+			// hole die Referenzkomponente, um eine einheitliche Richtung zu erhalten
+			referenceRay = (RayWrapper) labelToComponent.get(curRay.getLabel());
+			
+			LOGGER.trace("REFERENCE: " + referenceRay.getRay());
+			
+			assert referenceRay != null: "FEHLER: Fuer die Komponente " + curRay + " existiert keine Referenzkomponente!";
+			
+			rayDir = referenceRay.getRay().getDirection();
+			rayDir.normalize();
+			
+			curZ = Math.abs(rayDir.z);
+			if(curZ > curMaxZ) {
+				curMaxZ = curZ;
+				curMaxRay = referenceRay;
+				curMaxStart = curRay.getStartVert().getVertex().getPosition();
+				LOGGER.trace("z: " + curZ + " maxZ: " + curMaxZ);
+			}	
+		}
+		
+		// Strahl soll immer in Richtung der positiven z-Achse verlaufen
+		rayDir = curMaxRay.getRay().getDirection();
+		if(rayDir.z > 0.0f) {
+			rayDir.scale(-1.0f);
+		}
+		
+		rayDir.normalize();
+		
+		// neuen Strahl mit normalisierter Richtung erzeugen
+		Ray zAxisRay = new Ray(curMaxStart, rayDir);
+		
+		// berechne die XY-Projektion der Strahlenpunkte => wird fuer die isLeft-Berechnung benoetigt
+		MyVectormath mathHelper = MyVectormath.getInstance();
+		Vertex3d zAxisRayStartProj = mathHelper.createXYPlaneProjectionForPoint(zAxisRay.getStartVertex(), Axis.Y);
+		Vertex3d zAxisRayEndProj = mathHelper.createXYPlaneProjectionForPoint(zAxisRay.getEndVertex(), Axis.Y);
+
+		// erstelle nun zwei Listen, eine enthaelt saemtliche Faces links vom berechneten Strahl, die andere die Faces rechts von diesem
+		Set<Face> faces = getAdjacentFaces();
+		
+		// jedes Vertex kann zu maximal 4 Faces adjazent sein
+		assert faces.size() <= 4: "FEHLER: Vertex " + getID() + " ist adjazent zu " + faces.size() + " Faceelementen.";
+		
+		LOGGER.trace("#Adjazente Faces fuer Vertex " + getID() + " Label: " + getLabel() +  ": " + faces.size());
+		
+		List<Face> leftFaces = new ArrayList<Face>(2);
+		List<Face> rightFaces = new ArrayList<Face>(2);
+		
+		Iterator<Face> faceIter = faces.iterator();
+		Face curFace = null;		
+		Vertex3d centerProjection = null;
+		
+	
+		while(faceIter.hasNext()) {
+			curFace = faceIter.next();
+			centerProjection = mathHelper.createXYPlaneProjectionForPoint(new Vertex3d(curFace.getFacePoly().getCenter()), Axis.Y);
+			if(mathHelper.isLeft(zAxisRayStartProj, zAxisRayEndProj, centerProjection)) {
+				leftFaces.add(curFace);
+				LOGGER.trace("LEFT: " + curFace.getID());
+				faceIter.remove();
+			}
+		}
+	
+		rightFaces.addAll(faces);
+		
+		LOGGER.trace("#RIGHT: " + rightFaces.size() + " #LEFT: " + leftFaces.size());
+		
+		// fuehre nun die gleichen Berechnungen fuer den anderen Strahl durch
+		// sonst kann bei weniger als 4 Faces nicht entschieden werden, welches Face null ist
+		// verwende den verbleibenden Startstrahl
+		for(int i = 0; i < mStartRays.size(); i++) {
+			
+			curRay = mStartRays.get(i);
+			
+			// da die Startstrahlen unterschiedliche Richtungen haben, muessen sie auch unterschiedliche Labels besitzen 
+			if(curRay.getLabel() != curMaxRay.getLabel()) {
+				
+				// hole wiederum den zum zweiten Strahl gehoerenden Referenzstrahl ueber das Label
+				curMaxStart = curRay.getStartVert().getVertex().getPosition();
+				curMaxRay = (RayWrapper) labelToComponent.get(curRay.getLabel());
+				break;
+			}
+		}
+		
+		// normalisiere den Strahl, so dass er in Richtung der positiven x-Achse verlaeuft
+		rayDir = curMaxRay.getRay().getDirection();
+		rayDir.normalize();
+		
+		if(rayDir.x < 0.0f) rayDir.scale(-1.0f);
+		
+		Ray xAxisRay = new Ray(curMaxStart, rayDir);
+		Vertex3d xAxisRayStartProj = mathHelper.createXYPlaneProjectionForPoint(xAxisRay.getStartVertex(), Axis.Y);
+		Vertex3d xAxisRayEndProj = mathHelper.createXYPlaneProjectionForPoint(xAxisRay.getEndVertex(), Axis.Y);
+
+		// speichere die Faces nun anhand der Berechnungen
+		// beginne mit den linken Faces
+		if(leftFaces.size() > 0) {
+			centerProjection = mathHelper.createXYPlaneProjectionForPoint(new Vertex3d(leftFaces.get(0).getFacePoly().getCenter()), Axis.Y);
+			
+			if(mathHelper.isLeft(xAxisRayStartProj, xAxisRayEndProj, centerProjection)) {
+				setFace(FacePosition.UPPER_LEFT, leftFaces.get(0));
+				if(leftFaces.size() == 2) setFace(FacePosition.LOWER_LEFT, leftFaces.get(1));
+			}
+			else {
+				setFace(FacePosition.LOWER_LEFT, leftFaces.get(0));
+				if(leftFaces.size() == 2) setFace(FacePosition.UPPER_LEFT, leftFaces.get(1));
+			}
+		}
+
+		// bestimme nun die Positionen der rechten Faces
+		if(rightFaces.size() > 0) {
+			centerProjection = mathHelper.createXYPlaneProjectionForPoint(new Vertex3d(rightFaces.get(0).getFacePoly().getCenter()), Axis.Y);
+
+			if(mathHelper.isLeft(xAxisRayStartProj, xAxisRayEndProj, centerProjection)) {
+				setFace(FacePosition.UPPER_RIGHT, rightFaces.get(0));
+				if(rightFaces.size() == 2) {
+					setFace(FacePosition.LOWER_RIGHT, rightFaces.get(1));
+				}
+			}
+			else {
+				setFace(FacePosition.LOWER_RIGHT, rightFaces.get(0));
+				if(rightFaces.size() == 2) setFace(FacePosition.UPPER_RIGHT, rightFaces.get(1));
+			}
+		}
+		
+		// gib die gespeicherten Faces aus
+		// printAdjacentFaces();
+	}
+	// ------------------------------------------------------------------------------------------	
+	/** 
+	 * Sortierroutine fuer Faces anhand der z-Koordinate ihrer Polygonmittelpunkte 
+	 * 
+	 * @param faces
+	 *            Zu sortierende Liste
+	 */
+	public void sortFacesByZCoordinate(final List<Face> faces) {
+		// sortiere anhand der z-Koordinate des Polygonmittelpunktes
+		Collections.sort(faces, new Comparator<Face>() {
+			public int compare(final Face o1, final Face o2) {
+
+				Float o1Float = o1.getFacePoly().getCenter().z;
+				Float o2Float = o2.getFacePoly().getCenter().z;
+				return o1Float.compareTo(o2Float);
+			}
+		});
+	}
+	
+	// ------------------------------------------------------------------------------------------	
+	/**
+	 * Methode liefert die Position des uebergebenen Faces innerhalb des Mappings
+	 * @param face Face, fuer das die Position angefragt wird
+	 * @return Position, falls ein Mapping fuer das Face existiert, null sonst
+	 */
+	public FacePosition getFacePosition(final Face face) {
+		
+		Iterator<FacePosition> posIter = mAdjacentFaces.keySet().iterator();
+		FacePosition curPos = null;
+		while(posIter.hasNext()) {
+			curPos = posIter.next();
+			if(mAdjacentFaces.get(curPos) == face) return curPos;
+		}
+		return null;
+	}
+
+	// ------------------------------------------------------------------------------------------	
+
+	@Override
+	public Set<ModelSynthesisBaseGeometry> getAdjacentComponents() {
+		return new HashSet<ModelSynthesisBaseGeometry>(getRays());
+	}
+
+	// ------------------------------------------------------------------------------------------	
+
+	/* (non-Javadoc)
+	 * @see java.lang.Object#toString()
+	 */
+	@Override
+	public String toString() {
+		return "Vertex: " + getID() + ": " + getLabel() + " Pos: " + getVertex().getPositionPtr();
+	}
+	// ------------------------------------------------------------------------------------------	
+
+	
+
+}

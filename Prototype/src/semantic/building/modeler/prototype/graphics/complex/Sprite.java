@@ -1,0 +1,190 @@
+package semantic.building.modeler.prototype.graphics.complex;
+
+import java.util.HashMap;
+import java.util.Map;
+
+import processing.core.PApplet;
+import semantic.building.modeler.configurationservice.model.enums.Side;
+import semantic.building.modeler.math.Axis;
+import semantic.building.modeler.math.MyVector2f;
+import semantic.building.modeler.math.MyVectormath;
+import semantic.building.modeler.math.Plane;
+import semantic.building.modeler.math.Plane.CoordinatePlane;
+import semantic.building.modeler.math.Vertex3d;
+import semantic.building.modeler.prototype.enums.subdivisionType;
+import semantic.building.modeler.prototype.graphics.interfaces.iGraphicComplex;
+import semantic.building.modeler.prototype.graphics.primitives.AbstractQuad;
+import semantic.building.modeler.prototype.graphics.primitives.Quad;
+import semantic.building.modeler.prototype.service.Texture;
+import semantic.building.modeler.prototype.service.TextureManagement;
+import semantic.building.modeler.prototype.service.TextureManagement.TextureCategory;
+
+/**
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public class Sprite extends AbstractComplex {
+
+	/** Breite des Sprite */
+	private Float mWidth = null;
+
+	/**
+	 * Normalenvektor der Ebene, die das Sprite enthaelt => zentral fuer
+	 * Ausrichtung des Sprites
+	 */
+	private Plane mPlane = null;
+
+	/** Kategorie, aus der eine Textur fuer das Quad geladen werden soll */
+	private TextureCategory mCategory = null;
+
+	/**
+	 * @param parent
+	 *            PApplet-Instanz, wird fuer das Zeichnen des Sprites verwendet
+	 * @param mWidth
+	 *            Breite
+	 * @param mHeight
+	 *            Hoehe
+	 * @param plane
+	 *            Ebene, in der das Sprite erstellt werden soll
+	 * @param category
+	 *            Texturkategorie, aus der eine Textur ueber den Texturmanager
+	 *            geladen und verwendet werden soll
+	 */
+	public Sprite(PApplet parent, Float mWidth, Float mHeight, Plane plane,
+			TextureCategory category) {
+		super(parent, mHeight);
+		this.mWidth = mWidth;
+		mCategory = category;
+		mPlane = plane;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	/**
+	 * Methode erstellt einen Sprite zunaechst in der xy-Ebene mit den uebergebenen Ausmassen. Anschliessend berechnet man 
+	 * den Winkel zwischen der Zielausrichtung und der xy-Ausrichtung und dreht die Ebene um die Schnittgerade der beiden 
+	 * Ebenen. Dadurch erhaelt man die Zielebene in der gewuenschten Ausrichtung. 
+	 * 
+	 */
+	public void create() {
+
+		Float halfWidth = mWidth / 2;
+		Float halfHeight = mHeight / 2;
+
+		// erzeuge die Punkte initial in der xz-Ebene
+		// links hinten
+		mVertices.add(new Vertex3d(-halfWidth, 0.0f, -halfHeight));
+
+		// rechts hinten
+		mVertices.add(new Vertex3d(halfWidth, 0.0f, -halfHeight));
+		// rechts vorne
+		mVertices.add(new Vertex3d(halfWidth, 0.0f, halfHeight));
+		// links vorne
+		mVertices.add(new Vertex3d(-halfWidth, 0.0f, halfHeight));
+
+		// xz-Plane
+		Plane basePlane = new Plane(CoordinatePlane.XZ);
+
+		// projiziere die Punkte aus der Quell in die Zielbene
+		MyVectormath mathHelper = MyVectormath.getInstance();
+
+		assert basePlane != null && mPlane != null : "FEHLER: Uebergebene Ebenen undefiniert: BasePlane: "
+				+ basePlane + " TargetPlane: " + mPlane;
+
+		mathHelper.calculatePlaneToPlaneProjectionForPoints(basePlane, mPlane,
+				mVertices);
+
+		// FRONT
+		Integer[] indices = new Integer[4];
+		indices[0] = 0;
+		indices[1] = 1;
+		indices[2] = 2;
+		indices[3] = 3;
+		AbstractQuad tempQuad = new Quad();
+		tempQuad.setComplexParent(this);
+		tempQuad.setIndices(indices);
+		tempQuad.setDirection(Side.UNKNOWN);
+		// tempQuad.createTrianglesByIndices();
+		tempQuad.tesselate();
+		mOutdoorQuads.add(tempQuad);
+
+		// speichere die Texturkoordinaten im Quad
+		Map<Integer, MyVector2f> textureCoords = new HashMap<Integer, MyVector2f>(
+				4);
+		textureCoords.put(0, new MyVector2f(0.0f, 0.0f));
+		textureCoords.put(1, new MyVector2f(1.0f, 0.0f));
+		textureCoords.put(2, new MyVector2f(1.0f, 1.0f));
+		textureCoords.put(3, new MyVector2f(0.0f, 1.0f));
+		tempQuad.setTextureCoords(textureCoords);
+
+		// Normalenvektoren, Mittelpunkte, IDs etc.
+		finalizeCreation();
+
+		// textur anfordern, falls category gesetzt
+		if (mCategory != null) {
+			Texture texture = TextureManagement.getInstance()
+					.getTextureForCategory(mCategory);
+			setTexture(mCategory.toString(), texture);
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	/** Keine Funktion fuer Sprites */
+	public void extrude(Side whichFace, Axis extrudeAxis, float extrudeAmount) {
+		assert false : "FEHLER: Fuer diese Funktion ist keine Implementation vorhanden";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	/** Keine Funktion fuer Sprites */
+	public void subdivideQuad(Side whichFace, subdivisionType type,
+			float subdivisionFactor) {
+		assert false : "FEHLER: Fuer diese Funktion ist keine Implementation vorhanden";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	/** Keine Funktion fuer Sprites */
+	public iGraphicComplex subdivide(subdivisionType type,
+			float subdivisionFactor) {
+		assert false : "FEHLER: Fuer diese Funktion ist keine Implementation vorhanden";
+		return null;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	/**
+	 * Ebenfalls leere Implementation, ein Sprite benoetigt kein Dach
+	 */
+	public void computeRoof() {
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "Sprite";
+	}
+
+	// ------------------------------------------------------------------------------------------
+	@Override
+	public void scaleTextureCoordinates(float minScaleFaktor) {
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public AbstractComplex cloneConcreteComponent() {
+		return new Sprite(mParent, mWidth, mHeight, mPlane.clone(), mCategory);
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

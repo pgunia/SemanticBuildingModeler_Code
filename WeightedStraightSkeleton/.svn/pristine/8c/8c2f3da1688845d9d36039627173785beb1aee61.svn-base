@@ -1,0 +1,158 @@
+package skeleton.algorithm;
+
+import java.util.List;
+import java.util.Vector;
+
+import math.Vertex3d;
+import prototype.service.Texture;
+
+/**
+ * 
+ * @author Patrick Gunia
+ * Klasse zur Steuerung der Straight-Skeleton-Berechnung. Speichert Vertices, 
+ * verschiedene Flags, Kantengewichte etc.
+ *
+ */
+
+public class RoofDescriptor {
+	
+	/** Eingabevertices */
+	private transient List<Vertex3d> mVertices = null;
+	
+	/** Liste enthaelt Kantengewichte in der Abfolge der Kanten, wie sie auch 
+	 *  im Vertex-Vektor vorkommt
+	 */
+	private transient List<Float> mEdgeWeights = null;
+	
+	/** Stanardgewichtung fuer Kanten, sofern kein Gewicht uebergeben wird, verwendet dies als Kantengewicht */
+	private static final Float mStandardWeight = 0.7071067f; // 45°-Winkel
+	
+	/** Fuer die Texturierung des Daches verwendete Textur */
+	private transient Texture mTexture = null;
+	
+	/** Kantengewicht an der Hauptseite */
+	private transient Float mMainWeight = null;
+	
+	/** Kantengewicht an den Seiten */
+	private transient Float mSideWeight = null;
+	
+		
+	// ------------------------------------------------------------------------------------------
+
+	
+	/**
+	 * Leerer Default-Konstruktor
+	 */
+	public RoofDescriptor() {
+		super();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mVertices
+	 */
+	public List<Vertex3d> getVertices() {
+		return mVertices;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mVertices the mVertices to set
+	 */
+	public void setVertices(final List<Vertex3d> mVertices) {
+		this.mVertices = mVertices;
+		
+		// berechne prophylaktisch Standard-Edge-Weights
+		if(mEdgeWeights == null) computeStandardWeights();
+		
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mEdgeWeights
+	 */
+	public List<Float> getEdgeWeights() {
+		return mEdgeWeights;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mEdgeWeights the mEdgeWeights to set
+	 */
+	public void setEdgeWeights(List<Float> mEdgeWeights) {
+		this.mEdgeWeights = mEdgeWeights;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mTexture
+	 */
+	public Texture getTexture() {
+		return mTexture;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mTexture the mTexture to set
+	 */
+	public void setTexture(Texture mTexture) {
+		this.mTexture = mTexture;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet fuer eine Vertex-Uebergabe Kantengewichte basierend auf dem in der Klasse
+	 * festgelegten Standardwert
+	 */
+	private void computeStandardWeights() {
+		
+		assert mVertices != null: "FEHLER: Es wurden keine Vertices gesetzt";
+		int numberOfVertices = mVertices.size();
+		
+		mEdgeWeights = new Vector<Float>(numberOfVertices);
+		
+		for(int i = 0; i < numberOfVertices; i++) {
+			mEdgeWeights.add(mStandardWeight);
+		}
+		
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mMainWeight
+	 */
+	public Float getMainWeight() {
+		return mMainWeight;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mMainWeight the mMainWeight to set
+	 */
+	public void setMainWeight(Float mMainWeight) {
+		this.mMainWeight = mMainWeight;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mSideWeight
+	 */
+	public Float getSideWeight() {
+		return mSideWeight;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mSideWeight the mSideWeight to set
+	 */
+	public void setSideWeight(Float mSideWeight) {
+		this.mSideWeight = mSideWeight;
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

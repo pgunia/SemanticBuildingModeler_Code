@@ -1,0 +1,99 @@
+package semantic.city.builder.weightedstraightskeleton.algorithm;
+
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
+import semantic.city.builder.math.MyVectormath;
+import semantic.city.builder.math.Plane;
+import semantic.city.builder.math.Vertex3d;
+
+/**
+ * beschreibt ein Polygon durch eine Menge von Vertices, die im Uhrzeigersinn angeben werden
+ */
+
+public class SkeletonPolygon {
+
+	/** Vertices, die das Polygon bildern */
+	private List<SkeletonVertex> mVertices = null;
+	
+	/** Ebene, die das Polygon enthaelt */
+	private Plane mPlane = null;
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * 
+	 */
+	public SkeletonPolygon() {
+		mVertices = new ArrayList<SkeletonVertex>();
+	}
+	// ------------------------------------------------------------------------------------------
+
+	
+	/**
+	 * @param mVertices
+	 */
+	public SkeletonPolygon(List<SkeletonVertex> mVertices) {
+		super();
+		this.mVertices = mVertices;
+		
+		// in Basisklasse casten
+		List<Vertex3d> vertList = new ArrayList<Vertex3d>(mVertices);
+		mPlane = MyVectormath.getInstance().calculatePlaneByVertices(vertList);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return
+	 */
+	public List<SkeletonVertex> getVertices() {
+		return mVertices;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mVertices
+	 */
+	public void setVertices(List<SkeletonVertex> mVertices) {
+		this.mVertices = mVertices;
+		
+		// in Basisklasse casten
+		List<Vertex3d> vertList = new ArrayList<Vertex3d>(mVertices);
+		mPlane = MyVectormath.getInstance().calculatePlaneByVertices(vertList);
+	}
+	// ------------------------------------------------------------------------------------------	
+	@Override
+	public String toString() {
+		String linebreak = System.getProperty("line.separator");
+		String result = "Polygon: " + linebreak;
+		SkeletonVertex currentVertex = null;
+		int index = 0;
+		Iterator<SkeletonVertex> vertIter = mVertices.iterator();
+		while(vertIter.hasNext()) {
+			currentVertex = vertIter.next();
+			if(currentVertex.isTwinVertex()) result += "Vertex " + index + ": " + currentVertex.getPositionPtr() +" TwinVertex" + linebreak;
+			else result += "Vertex " + index + ": " + currentVertex.getPositionPtr() + linebreak;
+			index++;
+		}
+		
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mPlane
+	 */
+	public Plane getPlane() {
+		return mPlane;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	
+
+	
+	
+}

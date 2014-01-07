@@ -1,0 +1,74 @@
+package semantic.city.builder.prototype.building.footprint;
+
+import java.util.ArrayList;
+import java.util.List;
+
+import semantic.city.builder.math.MyPolygon;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.MyVectormath;
+import semantic.city.builder.math.Plane;
+import semantic.city.builder.math.Plane.CoordinatePlane;
+import semantic.city.builder.math.Vertex3d;
+
+/**
+ * Rechteckiger Grundriss, definiert durch die Angabe von Laenge und Breite
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public class RectFootprint extends AbstractFootprint {
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "RectFootprint";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Konstruktor erzeugt einen rechteckigen Grundriss in der uebergebenen
+	 * Ebene mit den festgelegten Ausdehnungen
+	 * 
+	 * @param plane
+	 *            Ebene, in der der Grundriss erzeugt wird
+	 * @param length
+	 *            Laenge
+	 * @param width
+	 *            Breite
+	 */
+	public RectFootprint(Plane plane, double length, double width) {
+
+		double halfLength = length / 2.0d;
+		double halfWidth = width / 2.0d;
+
+		// erzeuge die Punkte in der xz-Ebene und projiziere sie dann auf die
+		// Zielebene
+		List<Vertex3d> vertices = new ArrayList<Vertex3d>(4);
+		// links hinten (bei Draufsicht)
+		vertices.add(new Vertex3d(new MyVector3f(-halfLength, 0.0f, -halfWidth)));
+		// rechts hinten
+		vertices.add(new Vertex3d(new MyVector3f(halfLength, 0.0f, -halfWidth)));
+		// rechts vorne
+		vertices.add(new Vertex3d(new MyVector3f(halfLength, 0.0f, halfWidth)));
+		// links vorne
+		vertices.add(new Vertex3d(new MyVector3f(-halfLength, 0.0f, halfWidth)));
+
+		Plane xzPlane = new Plane(CoordinatePlane.XZ);
+
+		// wenn die Zielebene von der xz-Ebene abweicht, projiziere die Punkte
+		// von der xz-Ebene auf die Eingabeebene
+		if (!plane.equals(xzPlane)) {
+			MyVectormath.getInstance()
+					.calculatePlaneToPlaneProjectionForPoints(xzPlane, plane,
+							vertices);
+		}
+		MyPolygon footprint = new MyPolygon(vertices);
+		LOGGER.debug("RECT-FOOTPRINT-NORMAL: " + footprint.getNormalPtr());
+		mFootprints.add(footprint);
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

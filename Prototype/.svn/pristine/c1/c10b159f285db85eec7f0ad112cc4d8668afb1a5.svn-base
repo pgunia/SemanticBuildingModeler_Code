@@ -1,0 +1,86 @@
+package semantic.city.builder.prototype.importer;
+
+import java.io.File;
+import java.util.List;
+
+import org.apache.log4j.Logger;
+
+import processing.core.PApplet;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.Vertex3d;
+import semantic.city.builder.prototype.graphics.primitives.AbstractQuad;
+
+/**
+ * 
+ * @author Patrick Gunia Abstrakte Basisklasse fuer den Import von Models aus
+ *         verschiedenen 3d-Formaten
+ */
+
+public abstract class AbstractModelImport {
+
+	/** Logger */
+	protected static Logger LOGGER = Logger
+			.getLogger(AbstractModelImport.class);
+
+	/** Methode liefert alle Vertices, aus denen das geladene Objekt besteht */
+	abstract public List<Vertex3d> getVertices();
+
+	/** Methode liefert die Faces, aus denen das Objekt zusammengesetzt ist */
+	abstract public List<AbstractQuad> getFaces();
+
+	/** Methode laedt das Modell mit dem uebergebenen vollstaendigen Pfad */
+	abstract public void loadModel(String filename, PApplet parent);
+
+	/** Methode laedt das Modell aus der uebergebenen Quelldatei */
+	abstract public void loadModel(final File srcFile, final PApplet parent);
+
+	/** Hoehe des geladenen Objekts y-Achse */
+	protected Float mHeight = null;
+
+	/** Tiefe des geladenen Objekts z-Achse */
+	protected Float mDepth = null;
+
+	/** Breite des geladenen Objekts x-Achse */
+	protected Float mWidth = null;
+
+	/** Mittelpunkt des geladenen Objekts */
+	protected MyVector3f mCenter = null;
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mHeight
+	 */
+	public Float getHeight() {
+		return mHeight;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mDepth
+	 */
+	public Float getDepth() {
+		return mDepth;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mWidth
+	 */
+	public Float getWidth() {
+		return mWidth;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mCenter
+	 */
+	public MyVector3f getCenter() {
+		return mCenter;
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

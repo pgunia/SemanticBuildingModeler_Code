@@ -1,0 +1,290 @@
+package semantic.city.builder.prototype.building.temple;
+
+import java.util.EnumMap;
+import java.util.Map;
+
+import processing.core.PApplet;
+import semantic.city.builder.configurationservice.model.BuildingDimensionsConfiguration;
+import semantic.city.builder.configurationservice.model.BuildingDoppelantentempelConfiguration;
+import semantic.city.builder.configurationservice.model.component.FasciaComponentConfiguration;
+import semantic.city.builder.configurationservice.model.component.PillarComponentConfiguration;
+import semantic.city.builder.configurationservice.model.component.RoundStairsComponentConfiguration;
+import semantic.city.builder.configurationservice.model.enums.FloorPosition;
+import semantic.city.builder.configurationservice.model.enums.ModelCategory;
+import semantic.city.builder.configurationservice.model.enums.Side;
+import semantic.city.builder.math.MyPolygon;
+import semantic.city.builder.math.MyVector3f;
+import semantic.city.builder.math.Plane;
+import semantic.city.builder.math.Plane.CoordinatePlane;
+import semantic.city.builder.prototype.building.AbstractBuilding;
+import semantic.city.builder.prototype.building.BuildingDimensions;
+import semantic.city.builder.prototype.building.footprint.DoppelantentempelFootprint;
+import semantic.city.builder.prototype.building.footprint.RectFootprint;
+import semantic.city.builder.prototype.graphics.complex.AbstractComplex;
+import semantic.city.builder.prototype.graphics.complex.FloorComplex;
+import semantic.city.builder.prototype.graphics.complex.IndoorFloorComplex;
+import semantic.city.builder.prototype.graphics.complex.OpenFloorComplex;
+import semantic.city.builder.prototype.service.ObjectPositioningService;
+import semantic.city.builder.prototype.service.PositionConfig;
+import semantic.city.builder.prototype.service.TextureManagement.TextureCategory;
+
+/**
+ * Klasse erzeugt einen Doppelantentempel aufgrund der vorgegebenen Parameter
+ * 
+ * @author Patrick Gunia
+ * 
+ */
+
+public class Doppelantentempel extends AbstractBuilding {
+
+	// ------------------------------------------------------------------------------------------
+	public Doppelantentempel(final PApplet applet, final MyVector3f position,
+			final BuildingDoppelantentempelConfiguration buildingConf) {
+		super(applet, position, buildingConf);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "Doppelantentempel";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public void create() {
+
+		// verwaltet die aktuelle Hoehe, ueber die der jeweilige
+		// Verschiebungsvektor skaliert wird
+		float currentHeight = 0;
+
+		assert mConf != null : "FEHLER: Konfigurationsdatei konnte nicht gelesen werden!";
+
+		// Gebaeudeausdehnungen berechnen
+		computeBuildingDimensions();
+
+		LOGGER.info("Laenge: " + mDimensions.getLength() + " Breite: "
+				+ mDimensions.getWidth() + " Hoehe: " + mDimensions.getHeight());
+
+		// Grundrisse erstellen, aeusserer Grundriss
+		mOuterFootprint = new RectFootprint(new Plane(CoordinatePlane.XZ),
+				mDimensions.getLength(), mDimensions.getWidth());
+
+		// hier wird nur ein einzelner rechteckiger Grundriss verwendet
+		final MyPolygon footprint = mOuterFootprint.getFootprints().get(0);
+
+		// Normale des Footprints
+		final MyVector3f footprintNormal = footprint.getNormal();
+
+		// baue das Gebaeude von unten nach oben, beginne mit dem Bau der Treppe
+		final BuildingDoppelantentempelConfiguration templeConf = (BuildingDoppelantentempelConfiguration) mConf;
+		final RoundStairsComponentConfiguration stairsConf = templeConf
+				.getRoundStairs();
+
+		final float wallThickness = templeConf.getDimensions()
+				.getWallThickness();
+
+		// verschiebe die Treppen um eine Stufe nach unten, um ein
+		// Zwischengeschoss mit Treppenhoehe einzusetzen, das kein TOP- und
+		// BOTTOM-Quad besitzt
+		MyVector3f translation = footprintNormal.clone();
+		translation.scale(-stairsConf.getStepHeight());
+		translation.add(mPosition);
+
+		// erzeuge einen Treppenaufgang zum Tempel
+		ObjectPositioningService.getInstance().addRoundStairs(mBuilding,
+				footprint, stairsConf, translation);
+
+		// Zwischengeschoss einfuegen, oberhalb der eingefuegten Treppe
+		mBuilding.addIntermediateFloor(footprint, stairsConf.getStepHeight(),
+				translation);
+
+		// innerer Grundriss
+		// Groesse des inneren Grundriss 20% kleiner waehlen
+		mInnerFootprint = new DoppelantentempelFootprint(new Plane(
+				CoordinatePlane.XZ), mDimensions.getLength() * 0.6f,
+				mDimensions.getWidth() * 0.6d);
+		translation = new MyVector3f();
+
+		IndoorFloorComplex indoorFloor = new IndoorFloorComplex(
+				mBuilding.getParent(), mDimensions.getHeight(),
+				mInnerFootprint.getFootprints(),
+				mInnerFootprint.getWallDescriptors());
+		indoorFloor.create();
+		indoorFloor.translate(mPosition);
+		indoorFloor.update();
+		indoorFloor.unregister();
+
+		// bei dem verwendeten Footprint handelt es sich um die Bodenflaeche des
+		// Gebaeudes / Stockwerks
+		boolean isTop = false;
+		OpenFloorComplex outerFloor = new OpenFloorComplex(
+				mBuilding.getParent(), footprint, mDimensions.getHeight(),
+				mBuilding.getNormalToDirectionMap(), FloorPosition.GROUND, 0,
+				isTop);
+		outerFloor.create();
+		outerFloor.translate(mPosition);
+		outerFloor.update();
+		outerFloor.setIndoor(indoorFloor);
+		mBuilding.addComplex(outerFloor);
+
+		// Zwischengeschoss einfuegen
+		MyVector3f intermediatePosition = footprintNormal.clone();
+		currentHeight = mDimensions.getHeight();
+		intermediatePosition.scale(currentHeight);
+		intermediatePosition.add(mPosition);
+		mBuilding.addIntermediateFloor(footprint, wallThickness,
+				intermediatePosition);
+
+		FloorComplex architrav = new FloorComplex(mBuilding.getParent(),
+				footprint, templeConf.getArchitraveHeight(),
+				mBuilding.getNormalToDirectionMap(),
+				FloorPosition.INTERMEDIATE, mBuilding.getFloors().size(), isTop);
+		architrav.create();
+
+		// auf richtige Hoehe verschieben
+		MyVector3f firstUpperPosition = footprintNormal.clone();
+		currentHeight += wallThickness;
+		firstUpperPosition.scale(currentHeight);
+
+		// Position und Hoehenverschiebung einrechnen
+		translation.add(mPosition, firstUpperPosition);
+		architrav.translate(translation);
+		architrav.update();
+		mBuilding.addComplex(architrav);
+
+		// Zwischengeschoss einfuegen
+		intermediatePosition = footprintNormal.clone();
+		currentHeight += templeConf.getArchitraveHeight();
+		intermediatePosition.scale(currentHeight);
+		intermediatePosition.add(mPosition);
+		AbstractComplex intermediateFloor = mBuilding.addIntermediateFloor(
+				footprint, wallThickness, intermediatePosition);
+
+		FasciaComponentConfiguration fasciaConf = templeConf.getFascia();
+		ObjectPositioningService.getInstance().addFascia(mBuilding, fasciaConf,
+				intermediateFloor);
+
+		FloorComplex metope = new FloorComplex(mBuilding.getParent(),
+				footprint, templeConf.getMetopeHeight(),
+				mBuilding.getNormalToDirectionMap(),
+				FloorPosition.INTERMEDIATE, mBuilding.getFloors().size(), isTop);
+		metope.create();
+		// auf richtige Hoehe verschieben
+		firstUpperPosition = footprintNormal.clone();
+		currentHeight += wallThickness;
+		firstUpperPosition.scale(currentHeight);
+		translation.add(mPosition, firstUpperPosition);
+		metope.translate(translation);
+		metope.update();
+		mBuilding.addComplex(metope);
+
+		final ObjectPositioningService posService = ObjectPositioningService
+				.getInstance();
+		PositionConfig posConfigForTriglyphe = new PositionConfig();
+		posConfigForTriglyphe.setBuilding(mBuilding);
+		posConfigForTriglyphe.setDistance(0.05f);
+		posConfigForTriglyphe.setLowerBorderObjectToQuadRatio(1.0f);
+		posConfigForTriglyphe.setUpperBorderObjectToQuadRatio(1.0f);
+		posConfigForTriglyphe.setModelCategory(ModelCategory.Triglyphe);
+		posConfigForTriglyphe.setObjectFront(new MyVector3f(0.0f, 0.0f, 1.0f));
+		posConfigForTriglyphe.setOnCorners(true);
+		posConfigForTriglyphe.setOnEdges(true);
+		posConfigForTriglyphe.addSide(Side.FRONT);
+		posConfigForTriglyphe.addSide(Side.BACK);
+		posConfigForTriglyphe.addSide(Side.LEFT);
+		posConfigForTriglyphe.addSide(Side.RIGHT);
+		posConfigForTriglyphe.setRelativeFloorHeightPosition(0.5f);
+		posConfigForTriglyphe.setFloorIndex(mBuilding.getFloors().size() - 1);
+		posService.computePositionsForObjects(posConfigForTriglyphe);
+
+		FloorComplex horizontalGeison = new FloorComplex(mBuilding.getParent(),
+				footprint, templeConf.getGeisonHeight(),
+				mBuilding.getNormalToDirectionMap(), FloorPosition.TOP,
+				mBuilding.getFloors().size(), isTop);
+		horizontalGeison.create();
+
+		// auf richtige Hoehe verschieben
+		firstUpperPosition = footprintNormal.clone();
+		currentHeight += templeConf.getMetopeHeight();
+		firstUpperPosition.scale(currentHeight);
+		translation.add(mPosition, firstUpperPosition);
+		horizontalGeison.translate(translation);
+		horizontalGeison.update();
+		mBuilding.addComplex(horizontalGeison);
+
+		ObjectPositioningService.getInstance().addFascia(mBuilding, fasciaConf,
+				horizontalGeison);
+
+		// fuege die Saeulen hinzu
+
+		PillarComponentConfiguration pillar = templeConf.getPillar();
+		posService.addPillars(mBuilding, pillar);
+
+		addRoof();
+		ObjectPositioningService.getInstance().addEdgeAdditions(mBuilding,
+				templeConf.getEdgeAdditions());
+
+		finalizeBuilding();
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * 
+	 * @Override Methode fuehrt automatisiert verschiedene Berechnungsschritte
+	 *           durch, die bei allen Arten von Gebaeuden relevant sind
+	 *           Berechnung von Waenden, Daechern, Texturkoordinaten,
+	 *           Tesselation etc.
+	 */
+	protected void finalizeBuilding() {
+
+		// fuege ein Dach hinzu
+		addRoof();
+
+		// Fuege Waende mit der vorgegebenen Wandstaerke ein
+		insetWalls(mBuilding, mConf.getDimensions().getWallThickness());
+
+		// tesseliere das Gebaeude
+		mBuilding.tesselate();
+
+		// beim Tempel muessen die Koordinaten nicht durchgaengig berechnet
+		// werden, da es keine durchgaengigen Flaechen gibt, die sich
+		// ueber mehrere Stockwerke erstrecken, darum werden hier nur die
+		// Koordinaten fuer saemtliche Komponenten gebaut
+		mBuilding.computeTextureCoordinates();
+
+		// setze Wandtexturen
+		mBuilding.setTextureByCategory(TextureCategory.Wall);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode erzeugt eine Dimensions-Instanz, mittels derer nachfolgend das
+	 * Gebaeude konstruiert wird
+	 */
+	private void computeBuildingDimensions() {
+
+		BuildingDoppelantentempelConfiguration conf = (BuildingDoppelantentempelConfiguration) mConf;
+		BuildingDimensionsConfiguration dimensions = conf.getDimensions();
+
+		assert dimensions.getHeight() != null : "LEER";
+		float height = dimensions.getHeight().getRandValueWithinRange();
+
+		// Bei Tempeln existieren keine Stockwerke im eigentlichen Sinne, die
+		// Hoehe bezieht sich auf die Hoehe des offenen Saeulenareals
+		Map<FloorPosition, Float> floorHeight = new EnumMap<FloorPosition, Float>(
+				FloorPosition.class);
+		floorHeight.put(FloorPosition.GROUND, height);
+
+		mDimensions = new BuildingDimensions(dimensions.getLength()
+				.getRandValueWithinRange(), dimensions.getWidth()
+				.getRandValueWithinRange(), height, floorHeight, 1);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}

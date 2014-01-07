@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+    <eb:exampleBased xmlns="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/ExampleBasedSynthesis"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xmlns:eb="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/ExampleBasedSynthesis"
+        xmlns:ct="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/CommonTypes"
+        xsi:schemaLocation="http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/ExampleBasedSynthesis http://crazyhorse.archaeologie.uni-koeln.de/~pgunia/SchemaDocuments/ExampleBasedSynthesis/ExampleBasedSynthesisSchema.xsd">
+        <ct:polygonSource>
+            <ct:exampleClass>RectFootprint</ct:exampleClass>
+        </ct:polygonSource>
+        <eb:firstComponentType>EDGE</eb:firstComponentType>
+        <eb:cornerCount>1</eb:cornerCount>
+        <eb:reflexCornerCount>1</eb:reflexCornerCount>
+        <eb:edgeCount>-1</eb:edgeCount>
+        <eb:insideCount>-1</eb:insideCount>
+        <eb:outsideCount>-1</eb:outsideCount>
+        <eb:randomComponentChoice>true</eb:randomComponentChoice>
+        <eb:randomStateChoice>true</eb:randomStateChoice>
+        <eb:consistencyConstraint>true</eb:consistencyConstraint>
+        <eb:onlyRayComponents>false</eb:onlyRayComponents>
+        <eb:onlyVertexComponents>false</eb:onlyVertexComponents>
+        <eb:cornerVoteBoost>8</eb:cornerVoteBoost>
+        <eb:reflexCornerVoteBoost>6</eb:reflexCornerVoteBoost>
+        <eb:edgeVoteBoost>1</eb:edgeVoteBoost>
+        <eb:outsideVoteBoost>1</eb:outsideVoteBoost>
+        <eb:insideVoteBoost>1</eb:insideVoteBoost>
+        <eb:numberOfParallelRays>8</eb:numberOfParallelRays>
+        <eb:parallelRayDistance>157.23</eb:parallelRayDistance>
+        <eb:parallelRayDistanceRuleComputation>17.93</eb:parallelRayDistanceRuleComputation>
+        <eb:randomGrowth>false</eb:randomGrowth>
+    </eb:exampleBased>
+

@@ -1,0 +1,630 @@
+package skeletonAlgorithm;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Vector;
+
+import org.apache.log4j.Logger;
+
+import math.MyVector3f;
+import math.Ray;
+import skeletonMath.MySkeletonVectormath;
+
+/**
+ * 
+ * @author Patrick Gunia
+ * 
+ *         Eine virtuelle Kante stellt eine Vereinigung mehrerer realer Kanten
+ *         dar, deren Punkte alle auf einem Strahl liegen. Virtuelle Kanten
+ *         werden bei Vertex und Split-Events erzeugt und speichern neben
+ *         Startpunkt und Richtung auch Zeiger auf alle Vertices, die sich auf
+ *         dieser Kante befinden.
+ * 
+ */
+public class VirtualEdge {
+
+	/** Logger */
+	protected static Logger logger = Logger.getLogger("weightedstraightskeleton.skeletonalgorithm.virtualedge");
+	
+	/** Mathebibliothek fuer Distanz- und Punkt-auf-Strahl-Berechnungen */
+	private MySkeletonVectormath mMathHelper = null;
+
+	/** Beschreibt den Strahl ueber Anfangspunkt und Richtung */
+	private Ray mRay = null;
+
+	/** Enthaelt alle Vertices auf der virtuellen Kante */
+	private List<VirtualEdgeHelper> mVerticesOnEdge = null;
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Konstruktor erzeugt aus den uebergebenen Vertices einen Strahl und fuegt
+	 * die Vertices zum Buffer hinzu
+	 */
+	public VirtualEdge(SkeletonVertex start, SkeletonVertex end,
+			MySkeletonVectormath mathHelper) {
+
+		MyVector3f rayDirection = new MyVector3f();
+		rayDirection.sub(end.getPosition(), start.getPosition());
+		mRay = new Ray(start.getPosition(), rayDirection);
+
+		mVerticesOnEdge = new ArrayList<VirtualEdgeHelper>();
+		mVerticesOnEdge.add(new VirtualEdgeHelper(start));
+		mVerticesOnEdge.add(new VirtualEdgeHelper(end));
+
+		mMathHelper = mathHelper;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode fuegt das uebergebene Vertex zur virtuellen Kante hinzu. Sofern
+	 * das Vertex hinter dem aktuellen Startvertex liegt, wird der Startpunkt
+	 * aktualisiert.
+	 * 
+	 * @param vertex
+	 *            SkeletonVertex, das zur virtuellen Kante hinzugefuegt werden
+	 *            soll
+	 */
+	public void addVertexToEdge(SkeletonVertex vertex) {
+
+		// befindet sich das Vertex auf dem Strahl => nur Warnmeldung ausgeben, nicht abbrechen, durch Ungenauigkeiten kann es hier dazu kommen, dass das Vertex sonst abgelehnt wird, obwohl es faktisch korrekt ist
+		if(!mMathHelper.isPointOnRay(vertex.getPosition(), mRay)) logger.warn("Das Vertex befindet sich nicht auf dem virtuellen Strahl, Abstand: " + mMathHelper.calculatePointEdgeDistance(vertex.getPositionPtr(), mRay) + " Vertex: " + vertex);
+		
+		// teste, ob sich der Punkt hinter dem Start-Vertex befindet, wenn ja,
+		// dann ersetze das Startvertex durch das neue Vertex
+		double parameter = mMathHelper.calculateParameterOnRayForPoint(
+				vertex.getPosition(), mRay);
+
+		// wenn der parameter < 0 ist, befindet sich das Vertex hinter dem Start
+		// der Kante
+		if (parameter < 0) {
+			mRay.setStart(vertex.getPosition());
+		}
+
+		VirtualEdgeHelper newVert = new VirtualEdgeHelper(vertex);
+		if (mVerticesOnEdge.indexOf(newVert) == -1) {
+			mVerticesOnEdge.add(newVert);
+		}
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft saemtliche Vertices auf der Kante und laesst fuer
+	 * alle Vertices ihre Distanz zum Startknoten der Kante berechnen.
+	 */
+	public void computeDistances() {
+		Iterator<VirtualEdgeHelper> vertIter = mVerticesOnEdge.iterator();
+		while (vertIter.hasNext()) {
+			vertIter.next()
+					.computeDistanceToStart(mRay.getStart(), mMathHelper);
+		}
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Sortierroutine, die saemtliche Vertices auf der virtuellen Kante
+	 * basierend auf ihrem Abstand zum Startpunkt sortiert.
+	 */
+
+	public void sortEdgeVerticesByDistance() {
+		computeDistances();
+		Collections.sort(mVerticesOnEdge, new Comparator<VirtualEdgeHelper>() {
+
+			@Override
+			public int compare(VirtualEdgeHelper arg0, VirtualEdgeHelper arg1) {
+				return arg0.getDistanceToStart().compareTo(
+						arg1.getDistanceToStart());
+			}
+		});
+
+		// berechne den Strahl aufgrund der sortierten Punkte neu
+		recomputeRay();
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode testet, ob sich die beiden uebergeben Vertices auf der virtuellen
+	 * Kante befinden, die durch diese Struktur beschrieben wird. Hierbei werden
+	 * 
+	 * @param start
+	 *            Startvertex der Kante
+	 * @param end
+	 *            Endvertex der Kante
+	 * @return True, falls sich beide Punkte auf dem Strahl befinden, und
+	 *         mindestens einer der Punkte auf dem durch die virtuelle Kante
+	 *         definierten Liniensegment, False sonst
+	 * 
+	 */
+	public boolean arePointsOnEdge(SkeletonVertex start, SkeletonVertex end) {
+
+		// teste zunaechst, ob sich die Punkte auf dem Strahl (nicht dem
+		// Segment) befinden
+		
+		logger.debug("Testing... Start: " + start + " End: " + end);
+		
+		if (mMathHelper.isPointOnRay(start.getPosition(), mRay)
+				&& mMathHelper.isPointOnRay(end.getPosition(), mRay)) {
+
+			logger.debug("POINTS ON EDGE: Start: " + start + " End: " + end);
+			
+			// wenn dies der Fall ist, pruefe, ob mindestens einer der Punkte
+			// auch auf dem Segment liegt
+			if (mMathHelper.isPointOnLineSegment(start.getPosition(), mRay)
+					|| mMathHelper
+							.isPointOnLineSegment(end.getPosition(), mRay))
+				return true;
+
+		}
+
+		return false;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode durchlaeuft alle VirtualEdgeHelper-Instanzen auf der Kante und vergleicht das uebergebene
+	 * Vertex mit den darin gespeicherten Vertices. Sofern die Vertices uebereinstimmen, gibt die Methode
+	 * True zurueck oder False
+	 * @param vertex Vertex, nach dem auf der Kante gesucht werden soll
+	 * @return True, wenn das Vertex auf der Kante vorkommt, False, wenn nicht
+	 * 
+	 */
+	public boolean isVertexOnEdge(SkeletonVertex vertex) {
+		
+		Iterator<VirtualEdgeHelper> vertIter = mVerticesOnEdge.iterator();
+		VirtualEdgeHelper currentVert = null;
+		while(vertIter.hasNext()) {
+			currentVert = vertIter.next();
+			if(currentVert.getVertex().equals(vertex)) return true;
+		}
+		
+		return false;
+	}
+	
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode wird automatisch aufgerufen, sobald die Sortierung der Vertices
+	 * aufgrund ihrer Entfernung zum Startpunkt durchgefuehrt wurde. Kern des
+	 * Ganzen ist die Ueberlegung, dass der Richtungsvektor des Rays immer die
+	 * Laenge der ganzen Kante enthaelt.
+	 */
+	private void recomputeRay() {
+
+		SkeletonVertex start = mVerticesOnEdge.get(0).getVertex();
+		SkeletonVertex end = mVerticesOnEdge.get(mVerticesOnEdge.size() - 1).getVertex();
+
+		MyVector3f direction = new MyVector3f();
+		direction.sub(end.getPosition(), start.getPosition());
+		mRay.setDirection(direction);
+
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String toString() {
+		String result = "";
+		result = "Strahl: " + mRay.toString();
+		for (int i = 0; i < mVerticesOnEdge.size(); i++) {
+			result += " Vertex " + i + ": "
+					+ mVerticesOnEdge.get(i).getVertex();
+		}
+		return result;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public Ray getRay() {
+		return mRay;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode sucht einen neuen Nachbarn fuer das uebergebene Vertex, dessen
+	 * urspruenglicher Nachbar geloescht wurde. Hierfuer durchlaeuft die Methode
+	 * die virtuelle Kante und in der durch die Vertices definierte Richtung und
+	 * gibt den ersten gueltigen Nachbarn zurueck.
+	 * 
+	 * @param neighbour
+	 *            Vertex, fuer das ein neuer Nachbar bestimmt werden soll
+	 * @param deletedVertex
+	 *            Vertex, das waehrend der Verarbeitung geloescht wurde
+	 * @return Der neue Nachbar, sofern einer gefunden wurde, sonst das
+	 *         geloeschte Vertex
+	 */
+	public SkeletonVertex getNeighbourForDeletedVertex(
+			SkeletonVertex neighbour, SkeletonVertex deletedVertex) {
+		/*
+		System.out.println("Update Nachbarn fuer geloeschtes Vertex: "
+				+ deletedVertex + " zu aktualisierender Nachbar: " + neighbour);
+		*/
+		int indexStart = getIndexForVertex(neighbour);
+		int indexNeighbour = getIndexForVertex(deletedVertex);
+
+		SkeletonVertex newNeighbour = null, invalidVertexTwin = null;
+
+		boolean foundNeighbour = false;
+		SkeletonVertex twinVertex = null;
+		if (neighbour.hasTwinVertex())
+			twinVertex = neighbour.getTwinVertex();
+
+		// wenn das geloeschte Vertex einen Zwilling besitzt, hole diesen, um zu verhindern, dass beim Update einfach auf den Zwilling gesprungen wird
+		if(deletedVertex.hasTwinVertex()) {
+			invalidVertexTwin = deletedVertex.getTwinVertex();
+		}
+		
+	//	logger.error("getNeighbourForDeletedVertex: Start: " + indexStart +  " Neighbour: " + indexNeighbour);
+	//	logger.error(this);
+		
+		// bestimme die Iterationsrichtung
+		if (indexStart < indexNeighbour) {
+
+			// durchlaufe alle Vertices in der festgelegten Richtung, bis ein
+			// gueltiger Nachbar gefunden wurde
+			for (int i = indexStart + 1; i < mVerticesOnEdge.size(); i++) {
+				newNeighbour = mVerticesOnEdge.get(i).getVertex();
+				
+				// wenn der Nachbar dem ungueltigen Vertex entspricht, skippe ihn
+				if(newNeighbour.equals(deletedVertex)) 
+					continue;
+				
+				// wenn das Vertex geloescht wird, skippe es
+				if (newNeighbour.isDeleted())
+					continue;
+				
+				// wenn der Nachbar dem Zwilling des aktuellen Nachbarn entspricht, skippe ihn
+				if (twinVertex != null) {
+					if (newNeighbour.equals(twinVertex))
+						continue;
+				}
+				
+				// wenn der Nachbar dem Zwilling des ungueltigen Vertex entspricht, skippe ihn
+				if(invalidVertexTwin != null) {
+					if(newNeighbour.equals(invalidVertexTwin)) continue;
+				}
+				foundNeighbour = true;
+				break;
+
+			}
+
+		}
+
+		else if (indexStart > indexNeighbour) {
+			for (int i = indexStart - 1; i >= 0; i--) {
+				newNeighbour = mVerticesOnEdge.get(i).getVertex();
+
+				if(newNeighbour.equals(deletedVertex)) continue;
+
+				
+				// wenn das Vertex geloescht wird, skippe es
+				if (newNeighbour.isDeleted())
+					continue;
+				
+				if (twinVertex != null) {
+					if (newNeighbour.equals(twinVertex))
+						continue;
+				}
+				if(invalidVertexTwin != null) {
+					if(newNeighbour.equals(invalidVertexTwin)) continue;
+				}
+
+				foundNeighbour = true;
+				break;
+
+			}
+		}
+		// else assert false:
+		// "Die Indices der uebergebenen Vertices sind gleich, es kann kein gueltiger Nachbar bestimmt werden";
+
+		if (foundNeighbour)
+			return newNeighbour;
+		else {
+			logger.error("KEINEN NACHBARN GEFUNDEN");
+			return deletedVertex;
+		}
+			
+
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode bestimmt den naechsten Nachbarn von start in Richtung
+	 * currentNeighbour und gibt diesen zurueck. Wenn der Sonderfall auftritt, bei dem
+	 * die Nachbarn und das Vertex selber Split- bzw. Originalvertices sind, gilt die Regel:
+	 * Split-Vertices bekommen Split-Vertices als Nachbarn, Original-Vertices bekommen Original-Vertices als Nachbarn
+	 * 
+	 * @param start
+	 *            Startvertex, fuer das der Nachbar bestimmt werden soll
+	 * @param currentNeighbour
+	 *            Nachbarvertex, wird verwendet, um die Richtung zu bestimmen,
+	 *            in die man sich auf der Kante bewegen muss
+	 * @return Nachbarvertex, wenn kein gueltiger Nachbar auf dem Strahl
+	 *         gefunden wird, nimmt man den uebergebenen currentNeighbour
+	 * 
+	 */
+	public SkeletonVertex getNeighbourForVertex(SkeletonVertex start,
+			SkeletonVertex currentNeighbour) {
+		
+		// System.out.println("Suche Nachbarvertex fuer Start: " + start + " mit aktuellem Nachbarn: " + currentNeighbour);
+		
+		int indexStart = getIndexForVertex(start);
+		int indexNeighbour = getIndexForVertex(currentNeighbour);
+		SkeletonVertex newNeighbour = null;
+
+		// wenn diese Methode gecallt wird, dann befinden sich die Punkte
+		// mathematisch betrachtet auf der Kante, es kann aber sein, dass nur
+		// Original- oder Twin-Vertex im Buffer ist
+		// in disem Fall versucht man die Anfrage mit dem jeweils anderen
+		// Geschwisterkind
+		if (indexStart == -1) {
+			if (start.hasTwinVertex()) {
+				indexStart = getIndexForVertex(start.getTwinVertex());
+			}
+		}
+
+		if (indexNeighbour == -1) {
+			if (currentNeighbour.hasTwinVertex()) {
+				indexNeighbour = getIndexForVertex(currentNeighbour
+						.getTwinVertex());
+			}
+		}
+
+		// wenn an diesem Punkt noch keine Treffer gefunden wurde, fuege die Kinder zur Kante hinzu
+		boolean addedVert = false;
+		if(indexStart == -1) {
+			addedVert = true;
+			addVertexToEdge(start);
+		}
+		if(indexNeighbour == -1) {
+			addedVert = true;
+			addVertexToEdge(currentNeighbour);
+		}
+		
+		// wenn vertices hinzugefuegt wurden, berechne die Kante neu
+		if(addedVert) {
+			sortEdgeVerticesByDistance();
+			// bestimme die Indices der Vertices auf der neu berechneten Kante
+			indexStart = getIndexForVertex(start);
+			indexNeighbour = getIndexForVertex(currentNeighbour);
+		}
+		
+		// wenn hier immer noch beide Indiecs nicht gesetzt sind, ist etwas uebel schief gelaufen
+		assert indexNeighbour != -1 && indexStart != -1 : "Die angefragten Vertices Start: " + start + " und CurrentNeighbour: " + currentNeighbour + " befinden sich nicht im Vertex-Buffer der Kante " + this;
+
+
+		SkeletonVertex twinVertex = null;
+		boolean foundNeighbour = false;
+		if (start.hasTwinVertex())
+			twinVertex = start.getTwinVertex();
+
+		// bestimme die Laufrichtung => wenn start > end, dekrementiere den
+		// Laufindex, sonst inkrementiere ihn
+		// inkrementiere
+		if (indexStart < indexNeighbour) {
+
+			for (int i = indexStart + 1; i <= indexNeighbour; i++) {
+				newNeighbour = mVerticesOnEdge.get(i).getVertex();
+
+				// wenn der neue Nachbar dem TwinVertex entspricht, fahre fort
+				if (twinVertex != null) {
+					if (twinVertex.equals(newNeighbour))
+						continue;
+
+				}
+				foundNeighbour = true;
+				break;
+			}
+		}
+		// dekrementiere
+		else if (indexStart > indexNeighbour) {
+			for (int i = indexStart - 1; i >= indexNeighbour; i--) {
+				newNeighbour = mVerticesOnEdge.get(i).getVertex();
+
+				// wenn der neue Nachbar dem TwinVertex entspricht, fahre fort
+				if (twinVertex != null) {
+					if (twinVertex.equals(newNeighbour))
+						continue;
+				}
+
+				foundNeighbour = true;
+				break;
+			}
+		} else
+			assert false : "Die Indices der uebergebenen Vertices sind gleich, es kann kein gueltiger Nachbar bestimmt werden. Startvert: " + start + " currentNeighbour: " + currentNeighbour;
+
+		
+		// wenn kein Nachbar bestimmt werden konnte, verwende den Eingabenachbarn
+		if(!foundNeighbour) return currentNeighbour;
+		
+		return newNeighbour;
+		
+		
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	
+	/**
+	 * Methode versucht, ein Vertex zwischen start und validNeighbour auf der virtuellen Kante zu finden, das ein Kind besitzt. Abhängig vom uebergebenen
+	 * Startvertex-Flag wird die Grenze fuer den Schleifendurchlauf bestimmt. Handelt es sich um das Startvertex, darf dieses nicht ueber das Endvertex 
+	 * hinauslaufen.
+	 * @param start Kinderloses SkeletonVertex, fuer das ein Ersatz bestimmt werden soll
+	 * @param validNeighbour Gueltiges Vertex mit Kind auf der virtuellen Kante
+	 * @param isStart Gibt an, ob es sich um das Startvertex einer Kante handelt oder um deren Endvertex
+	 * @return Vertex mit Kind auf der Kante zwischen start und validNeighbour, null sonst
+	 */
+	public SkeletonVertex getNeighbourForVertexForResult(SkeletonVertex start, SkeletonVertex validNeighbour, boolean isStart) {
+		
+		int indexStart = getIndexForVertex(start);
+		int indexNeighbour = getIndexForVertex(validNeighbour);
+		int maxIndex;
+		
+		SkeletonVertex newNeighbour = null;
+		SkeletonVertex twinStart = null;
+		if(start.hasTwinVertex()) twinStart = start.getTwinVertex();
+		
+		SkeletonVertex twinEnd = null;
+		if(validNeighbour.hasTwinVertex()) twinEnd = validNeighbour.getTwinVertex();
+		
+		// das Startvertex darf nicht ueber das Endvertex hinweglaufen, sonst verlaesst man den Bereich der Eingabekante!
+		
+		
+		// Laufrichtung bestimmen und das erste Vertex zwischen start und Neighbour zurueckgeben, das ueber ein gueltiges Kind verfuegt
+		if(indexStart < indexNeighbour) {
+				
+			if(isStart) maxIndex = indexNeighbour;
+			else maxIndex = mVerticesOnEdge.size();
+			
+				for(int i = indexStart + 1; i < maxIndex; i++) {
+					newNeighbour = mVerticesOnEdge.get(i).getVertex();
+					
+					// ueberspringe Zwillinge der Eingabevertices
+					if(newNeighbour.equals(twinStart) || (newNeighbour.equals(twinEnd))) continue;
+					
+					// wenn der Nachbar ein Kind hat, gebe ihn zurueck
+					if(newNeighbour.hasChild()) return newNeighbour;
+			
+			}
+		}
+		else if(indexStart > indexNeighbour) {
+				if(isStart) maxIndex = indexNeighbour;
+				// -1 wegen "echt groesser" im Laufindex
+				else maxIndex = -1;
+				for(int i = indexStart - 1; i > maxIndex; i--) {
+					newNeighbour = mVerticesOnEdge.get(i).getVertex();
+					
+					// ueberspringe Zwillinge der Eingabevertices
+					if(newNeighbour.equals(twinStart) || (newNeighbour.equals(twinEnd))) continue;
+					
+					// wenn der Nachbar ein Kind hat, gebe ihn zurueck
+					if(newNeighbour.hasChild()) return newNeighbour;
+				}
+	
+		}
+		
+		// wenn kein Vertex mit Kind gefunden werden konnte, gebe null zurueck
+		return null;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode durchlaeuft alle Vertices auf der Kante und versucht, die
+	 * Position des uebergebenen Vertex im Vertexbuffer zu bestimmen.
+	 * 
+	 * @param vertex
+	 *            Vertex, dessen Index auf der Kante gesucht werden soll
+	 * @return Index im Buffer, wenn das Vertex gefunden wird, -1 sonst
+	 */
+	private int getIndexForVertex(SkeletonVertex vertex) {
+
+		for (int i = 0; i < mVerticesOnEdge.size(); i++) {
+			if (mVerticesOnEdge.get(i).getVertex().equals(vertex))
+				return i;
+		}
+		return -1;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Klasse dient der Verwaltung von Distanzen und Vertices auf einer
+	 * virtuellen Kante. Fuer jedes Vertex, das einer solchen Kante hinzugefuegt
+	 * wird, erzeugt man eine Instanz dieser Klasse. Sobald alle virtuellen
+	 * Kanten vollstaendig sind, berechnet man die Abstaende und kann
+	 * anschliessend den Vektor mit den Vertices basierend auf diesen Abstaenden
+	 * sortieren.
+	 */
+	private class VirtualEdgeHelper {
+
+		private SkeletonVertex mVertex = null;
+
+		private Float mDistanceToStart = Float.MAX_VALUE;
+
+		// ------------------------------------------------------------------------------------------
+
+		public VirtualEdgeHelper(SkeletonVertex vertex) {
+			mVertex = vertex;
+		}
+
+		// ------------------------------------------------------------------------------------------
+		/**
+		 * Berechnet fuer das Vertex dessen Abstand zum uebergebenen
+		 * Startknoten. Handelt es sich um ein Twin-Vertex, so wird der Abstand
+		 * um einen minimalen Betrag vergroessert, so dass Twin-Vertices in der
+		 * nachfolgenden Sortierung immer nach ihren Geschwistern auftauchen.
+		 * 
+		 * @param start
+		 *            Vektor der Startposition, zu der der Abstand berechnet
+		 *            werden soll
+		 * @param mathHelper
+		 *            Pointer auf die Mathebibliotheksinstanz, ueber die die
+		 *            Abstandsberechnung durchgefuehrt wird
+		 */
+		public void computeDistanceToStart(MyVector3f start,
+				MySkeletonVectormath mathHelper) {
+			mDistanceToStart = mathHelper.calculatePointPointDistance(start,
+					mVertex.getPosition());
+			if (mVertex.isTwinVertex())
+				mDistanceToStart += 0.00000001f;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		public Float getDistanceToStart() {
+			return mDistanceToStart;
+		}
+
+		// ------------------------------------------------------------------------------------------
+		public SkeletonVertex getVertex() {
+			return mVertex;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		@Override
+		public int hashCode() {
+			final int prime = 31;
+			int result = 1;
+			result = prime * result + getOuterType().hashCode();
+			result = prime * result
+					+ ((mVertex == null) ? 0 : mVertex.hashCode());
+			return result;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		@Override
+		public boolean equals(Object obj) {
+			if (this == obj)
+				return true;
+			if (obj == null)
+				return false;
+			if (getClass() != obj.getClass())
+				return false;
+			VirtualEdgeHelper other = (VirtualEdgeHelper) obj;
+			if (!getOuterType().equals(other.getOuterType()))
+				return false;
+			if (mVertex == null) {
+				if (other.mVertex != null)
+					return false;
+			} else if (!mVertex.equals(other.mVertex))
+				return false;
+			return true;
+		}
+
+		// ------------------------------------------------------------------------------------------
+
+		private VirtualEdge getOuterType() {
+			return VirtualEdge.this;
+		}
+
+	}
+	// ------------------------------------------------------------------------------------------
+
+}

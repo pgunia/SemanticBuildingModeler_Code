@@ -1,0 +1,467 @@
+package semantic.city.builder.prototype.service;
+
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+
+import javax.media.opengl.GL;
+
+import org.apache.log4j.Logger;
+
+import processing.core.PApplet;
+import processing.core.PConstants;
+import processing.core.PImage;
+import processing.opengl.PGraphicsOpenGL;
+
+/**
+ * 
+ * @author Patrick Gunia Klasse dient der Verwaltung saemtlicher relevanter
+ *         Informationen ueber eine Textur
+ */
+
+public class Texture {
+
+	/** Logger */
+	protected static Logger logger = Logger.getLogger("prototype.service.texture");
+	
+	/** Pfad im Dateisystem */
+	private String mPath = null;
+
+	/** ID innerhalb des Texturmanagements */
+	private String mID = null;
+
+	/** Texturdaten */
+	private PImage mTexture = null;
+
+	/** Ungefaehre Groesse der Textur im Speicher */
+	private Double mMemorySize = 0D;
+
+	/** Anzahl der aktuellen Verweise auf die Texturinstanz */
+	private Integer mReferenceCounter = 0;
+
+	/** Flag zeigt an, ob die Texturdaten bereits geladen wurden */
+	private boolean mLoaded = false;
+	
+	/** Skalierungsfaktor, mit dem das Urbild nach dem Laden reskaliert wurde */
+	private Integer mTextureScalingFactor = null;
+
+	/** Durch OpenGL generierte TexturID zur TexturObject-Verwaltung*/
+	private int mGLTextureID = -1;
+	
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mPath
+	 */
+	public String getPath() {
+		return mPath;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mPath
+	 *            the mPath to set
+	 */
+	public void setPath(String mPath) {
+		this.mPath = mPath;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mID
+	 */
+	public String getID() {
+		return mID;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mID
+	 *            the mID to set
+	 */
+	public void setID(String mID) {
+		this.mID = mID;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mTexture
+	 */
+	public PImage getTexture() {
+		return mTexture;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mTexture
+	 *            the mTexture to set
+	 */
+	public void setTexture(PImage mTexture) {
+		this.mTexture = mTexture;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mLoaded
+	 */
+	public boolean isLoaded() {
+		return mLoaded;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mLoaded
+	 *            the mLoaded to set
+	 */
+	public void setLoaded(boolean mLoaded) {
+		this.mLoaded = mLoaded;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mPath
+	 * @param mID
+	 */
+	public Texture(String mPath, String mID) {
+		super();
+		this.mPath = mPath;
+		this.mID = mID;
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Dekrementiere den Reference-Counter, wenn er auf 0 geht, gebe die Texturdaten frei
+	 */
+	public void removeReference() {
+		mReferenceCounter--;
+		if(mReferenceCounter == 0) {
+			unload();
+		}
+	}
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Inkrementiert den Referenzzaehler
+	 */
+	public void addReference() {
+		mReferenceCounter++;
+	}
+	// ------------------------------------------------------------------------------------------
+	public Integer getTextureScaleFactor() {
+		return mTextureScalingFactor;
+	}
+		
+
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * Methode wrapped die Texture derart, dass sie in beiden Dimensionen
+	 * mehrfach aufgetragen wird. Dadurch wird die Unfaehigkeit von Processing
+	 * kompensiert, Texturkoordinaten ausserhalb des 0-1 Texturraums zu
+	 * verarbeiten.
+	 * @param useGL Flag gibt an, ob fuer das Rendering OpenGL verwendet werden soll, in diesem Fall werden die Texturen direkt gebindet
+	 */
+	public void loadAndScaleTexture() {
+
+		TextureManagement manager = TextureManagement.getInstance();
+		PApplet parent = manager.getParent();
+
+		// lade zunaechst das originale JPG
+		PImage texture = parent.loadImage(getPath());
+
+		texture.loadPixels();
+
+		int width = texture.width;
+		int height = texture.height;
+
+		// skaliere die Textur unter Beruecksichtigung der maximalen Ausdehnung
+		// in Hoehe / Breite
+		// Ziel dieses Ansatzes ist die Verwendung von Texturen mit Ausdehnungen
+		// innerhalb eines
+		// festgelegten Rahmens, dadurch wird verhindert, dass
+		// Texturausdehnungen erreicht werden
+		// die von Grafikkarten nicht mehr unterstuetzt werden
+		Float widthProportion = (float) (manager.getMaxTextureSize() / width);
+		Float heightProportion = (float) (manager.getMaxTextureSize() / height);
+		
+		logger.debug("MaxTextureSize: " + manager.getMaxTextureSize());
+		logger.debug("WidthProportion: " + widthProportion + " HeightProportion: " + heightProportion);
+
+		mTextureScalingFactor = 1;
+		if (widthProportion < 1.0f || heightProportion < 1.0f)
+			mTextureScalingFactor = 1;
+		else {
+			if (widthProportion >= heightProportion) {
+				mTextureScalingFactor = (int) Math.floor(heightProportion);
+			} else {
+				mTextureScalingFactor = (int) Math.floor(widthProportion);
+			}
+		}
+
+		// beschraenke die Anzahl der Vervielfaeltigungen => dadurch vermeidet
+		// man extrem vergroesserte Texturen bei sehr kleinen Quellbildern
+		if (mTextureScalingFactor > manager.getMaxTextureScaleFactor())
+			mTextureScalingFactor = manager.getMaxTextureScaleFactor();
+
+		logger.debug("Ausdehnungen der Quell-Textur: Breite: " + width + " Hoehe: " + height + " Scaling-Faktor: " + mTextureScalingFactor);
+
+		// berchne die Ausdehnungen der Zielgrafik basierend auf dem verwendeten
+		// Texture-Scaling-Faktor
+		int newWidth = width * mTextureScalingFactor;
+		int newHeight = height * mTextureScalingFactor;
+
+		int sizePixelArray = newWidth * newHeight;
+
+		int zeile = -1;
+		int spaltenIndexAbsolut = -1;
+		int zeileSource = -1;
+		int spalteSource = -1;
+		int indexQuelle = -1;
+
+		PImage scaledTexture = parent.createImage(newWidth, newHeight,
+				PConstants.RGB);
+
+		// durchlaufe alle Pixel des neuen Bildes
+		for (int i = 0; i < sizePixelArray; i++) {
+
+			// rechne den Pixelindex um auf das Quellbild
+			// Zeilenindex im neuen Bild
+			zeile = i / newWidth;
+
+			// Zeile im Quellbild
+			zeileSource = zeile % height;
+
+			// index innerhalb der Zeile berechnen
+			spaltenIndexAbsolut = i - zeile * newWidth;
+
+			// Spalte im Quellbild
+			spalteSource = spaltenIndexAbsolut % width;
+
+			indexQuelle = zeileSource * width + spalteSource;
+
+			// weise die Indices zu
+			try {
+				scaledTexture.pixels[i] = texture.pixels[indexQuelle];
+			} catch (ArrayIndexOutOfBoundsException e) {
+				logger.error("zeileSource: " + zeileSource + " spalteSource: " + spalteSource);
+				e.printStackTrace();
+				break;
+			}
+		}
+		scaledTexture.updatePixels();
+		mTexture = scaledTexture;
+		setLoaded(true);
+		computeTextureSize();
+		
+		// erhoehe den Referenzcount
+		addReference();
+		
+		// falls GL verwendet werden soll, benutze fuer OpenGL nur das unskalierte Quellbild, da Texture-Wrapping moeglich ist
+		// verwende zunaechst aus Gruenden der Einheitlichkeit auch hier die skalierte Textur, obwohl dies fuer OGL eigentlich nicht erforderlich ist
+		// kann noch umgestellt werden
+		if(manager.isUseGL()) initTextureForOGL(scaledTexture);
+	}
+	
+	// ------------------------------------------------------------------------------------------
+/**
+ * Wenn OpenGL fuer die Texturberechnungen verwendet wird, so fuehrt diese Methode alle erforderlichen Berechnungsschritte durch.
+ * Dabei wird der Textur eine ID zugewiesen, Texturparameter festgelegt, sowie das eigentliche Texturobjekt zunaechst konvertiert und dann ueber OGL geladen
+ * @param texture
+ */
+	
+	private void initTextureForOGL(PImage texture) {
+		assert mGLTextureID != -1: "FEHLER: Fuer die aktuelle Textur wurde noch keine OpenGL-TexturID generiert!";
+		TextureManagement manager = TextureManagement.getInstance();
+		PGraphicsOpenGL pgl = (PGraphicsOpenGL) manager.getParent().g;
+		
+		ByteBuffer byteBufferTexture = createOGLTextureFromPImage(texture);
+		// IntBuffer intBufferTexture = createOGLTextureFromPImage(texture);
+		
+		// erzeuge einen Byte-Buffer aus 
+		GL gl = pgl.beginGL();
+		
+		// Textur an die generierte ID binden
+		gl.glBindTexture(GL.GL_TEXTURE_2D, this.getGLTextureID());
+		
+		// Texture-Wrapping einstellen => http://wiki.delphigl.com/index.php/glTexParameter
+		gl.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_S, GL.GL_CLAMP);
+		gl.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_WRAP_T, GL.GL_CLAMP);
+		
+		// Texturfilterung, wenn das zu texturierende Pixel kleiner als ein ein einzelnes Pixel ist
+		gl.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MAG_FILTER,GL.GL_NEAREST);
+		
+		// Texturfilterung, wenn das zu texturierende Pixel groesser als ein einzelnes Pixel ist
+		// GL.GL_NEAREST verwendet fuer das Mapping immer das Texel, dessen Zentrum am nächsten zum zu texturierenden Pixel liegt
+		gl.glTexParameteri(GL.GL_TEXTURE_2D, GL.GL_TEXTURE_MIN_FILTER,GL.GL_NEAREST);
+		
+		// Textur laden
+		gl.glTexImage2D(GL.GL_TEXTURE_2D, 0, GL.GL_RGBA, texture.width,
+		        texture.height, 0, GL.GL_RGBA, GL.GL_UNSIGNED_BYTE, byteBufferTexture);
+		
+		// Textur ersetzt das aktuelle Material
+		gl.glTexEnvf(GL.GL_TEXTURE_ENV, GL.GL_TEXTURE_ENV_MODE, GL.GL_REPLACE);
+		
+		pgl.endGL();
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode wandelt die uebergebene PImage-Instanz in eine OGL-konforme Repraesentation um, die anschliessend durch
+	 * die OGL-Methoden verarbeitet werden kann
+	 * @param src PImage-Bild, aus dem die OGL-Repraesentation berechnet wird
+	 * @return ByteBuffer-Repraesentation, die von GL verarbeitet werden kann
+	 */
+	private ByteBuffer createOGLTextureFromPImage(PImage src) {
+		
+		// caste die Image-Repraesentation in ein BufferedImage
+		// BufferedImage srcImage = (BufferedImage) src.getImage();
+	
+		
+		// * TexImage in Bytedaten umwandeln *
+       //  int[] imageData = ((DataBufferInt) srcImage.getRaster().getDataBuffer()).getData();       
+		
+		src.updatePixels();
+		src.loadPixels();
+		int[] pixels = src.pixels;
+		
+        // byte[] buffer = new byte[srcImage.getWidth()*srcImage.getHeight()*4]; 
+		byte[] buffer = new byte[src.width * src.height * 4];
+        PApplet applet = TextureManagement.getInstance().getParent();
+        
+        // * von BGR => RGBA wandeln *
+        int c = 0;
+        Integer temp = -1;
+        float tmpValue;
+        for(int i=0;i<pixels.length;i++) {
+            
+        	// verwende die Processing-Access-Methoden fuer den Zugriff auf die RGB-Komponenten
+        	tmpValue = applet.red(pixels[i]);
+        	temp = (int) tmpValue;
+        	buffer[c] = temp.byteValue();
+        	
+        	tmpValue = applet.green(pixels[i]);
+        	temp = (int) tmpValue;
+        	buffer[c+1] = temp.byteValue();
+        	
+        	tmpValue = applet.blue(pixels[i]);
+        	temp = (int) tmpValue;
+        	buffer[c+2] = temp.byteValue();
+        	
+        	tmpValue = applet.alpha(pixels[i]);
+        	temp = (int) tmpValue;
+        	buffer[c+3] = temp.byteValue();
+      
+            c+=4;           
+        }
+    
+        ByteBuffer textureData = ByteBuffer.allocateDirect(buffer.length); 
+        textureData.order(ByteOrder.nativeOrder()); 
+        textureData.put(buffer, 0, buffer.length); 
+        textureData.flip();
+ 
+        return textureData;
+
+	}
+	
+	
+	// ------------------------------------------------------------------------------------------
+
+	
+	/**
+	 * @return the mGLTextureID
+	 */
+	public int getGLTextureID() {
+		return mGLTextureID;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @param mGLTextureID the mGLTextureID to set
+	 */
+	public void setGLTextureID(int mGLTextureID) {
+		this.mGLTextureID = mGLTextureID;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * 
+	 * @return Texturbreite
+	 */
+	public int getWidth() {
+		assert isLoaded(): "FEHLER: Textur wurde noch nicht geladen";
+		return mTexture.width;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * 
+	 * @return Texturhoehe
+	 */
+	public int getHeight() {
+		assert isLoaded(): "FEHLER: Textur wurde noch nicht geladen";
+		return mTexture.height;
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mReferenceCounter
+	 */
+	public Integer getReferenceCounter() {
+		return mReferenceCounter;
+	}
+	
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode berechnet eine ungefaehre Groesse der Textur im Speicher, indem fuer jedes Pixel
+	 * 32-Bit (int) addiert werden
+	 */
+	private void computeTextureSize() {
+		
+		int width = mTexture.width;
+		int height = mTexture.height;
+		
+		double numberOfPixel = width * height;
+		
+		// 32 Bit pro Pixel
+		double numberOfBits = numberOfPixel * 32;
+		
+		// auf Byte umrechnen
+		numberOfBits /= 8;
+		
+		// auf KB
+		numberOfBits /= 1024;
+		
+		// auf MB
+		numberOfBits /= 1024;
+		
+		mMemorySize = numberOfBits; 
+		
+	}
+	// ------------------------------------------------------------------------------------------
+
+	/**
+	 * @return the mMemorySize
+	 */
+	public Double getMemorySize() {
+		return mMemorySize;
+	}
+
+	// ------------------------------------------------------------------------------------------
+	/**
+	 * Methode setzt die Referenzen auf die Zieltextur zurueck, so dass der Speicher durch den GC
+	 * freigegeben werden kann
+	 */
+	public void unload() {
+		logger.info("Freeing Texture " + getPath());
+		mTexture = null;
+		setLoaded(false);
+		mMemorySize = 0D;
+		mReferenceCounter = 0;
+	}
+	// ------------------------------------------------------------------------------------------
+
+
+}
+
+

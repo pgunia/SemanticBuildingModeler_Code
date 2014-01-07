@@ -1,0 +1,49 @@
+package semantic.building.modeler.weightedstraightskeleton.algorithm;
+
+import semantic.building.modeler.math.MyVector3f;
+
+
+/**
+ * @author Patrick Gunia
+ * 
+ */
+public class SplitEvent extends IntersectionEvent {
+
+	private boolean mToDelete = false;
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String getType() {
+		return "SplitEvent";
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public SplitEvent(SkeletonVertex mVertex, MyVector3f mSchnittpunkt,
+			float mDistance, SkeletonVertex secondVertex) {
+		super(mVertex, mSchnittpunkt, mDistance, secondVertex);
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	@Override
+	public String toString() {
+		return super.toString();
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public boolean isToDelete() {
+		return mToDelete;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+	public void setToDelete(boolean mToDelete) {
+		this.mToDelete = mToDelete;
+	}
+
+	// ------------------------------------------------------------------------------------------
+
+}
